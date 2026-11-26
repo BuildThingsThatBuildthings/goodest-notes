@@ -24,6 +24,7 @@ enum Instrument: String, CaseIterable {
     }
 
     func configureInk(_ ink: PKCanvasView, color: UIColor, width: CGFloat) {
+        (ink as? CloudInkCanvas)?.configureCloud(self == .glowPen ? color : nil, width: width)
         switch self {
         case .pen: ink.tool = PKInkingTool(.pen, color: color, width: max(0.5, width))
         case .glowPen: ink.tool = PKInkingTool(.pen, color: GlowInk.color(color), width: max(0.9, width))
@@ -75,7 +76,7 @@ private final class PaperBackground: UIView {
 }
 
 final class SheetSurface: UIScrollView, UIScrollViewDelegate, PKCanvasViewDelegate, CanvasSurface {
-    let ink = PKCanvasView()
+    let ink = CloudInkCanvas()
     let inputLayer = DrawingInteractions()
     private let pageID: UUID
     private let playback=VisualPlayback()

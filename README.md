@@ -10,6 +10,12 @@ Tap **Open circuit lesson** on the writing desk. Play the teaching visual and wa
 
 Narrated MP4 export places captions beneath the action. It uses the system English voice, with an English Flite voice on the workspace server as a fallback. The circuit lesson includes its narration for offline teaching. Generated media is saved with the page and can replay offline.
 
+## Writing with cloud ink
+
+Choose **Glow pen** for a bright tip and a drifting trail that fades as you write. The saved stroke keeps its halo. Tap the ink swatch for the system color picker, quick colors, and a continuous width slider. The glow pen has its own color. Reduce Motion turns off the drifting trail.
+
+For a cleaner copy of your writing, open **Page actions → Polish handwriting**, then lasso the strokes you want to keep. Compare **Original** and **Polished**, adjust smoothing, and save the selected ink on the next page. The copy remains editable with PencilKit.
+
 ## How the backend works
 
 | Part | What it owns |

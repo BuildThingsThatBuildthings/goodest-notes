@@ -55,7 +55,7 @@ struct BoardCamera: Equatable {
 
 final class BoardSurface: UIScrollView, CanvasSurface, UIScrollViewDelegate, UIGestureRecognizerDelegate, PKCanvasViewDelegate {
     let inputLayer = DrawingInteractions()
-    let ink = PKCanvasView()
+    let ink = CloudInkCanvas()
     private let playback=VisualPlayback()
     private let grid = BoardGrid()
     private let overlay = CanvasOverlay()
