@@ -1,4 +1,5 @@
-import {canvasReply} from './canvas.mjs';
+import {runCouncil,transition} from './council.mjs';
+import {canvasMark,canvasReply} from './canvas.mjs';
 import {state as storage,hosted} from './hosted.mjs';
 import {randomUUID} from 'node:crypto';
 import {transaction,one,requireThat} from './db.mjs';
@@ -64,6 +65,22 @@ export async function tick(generate=callModel){
     row.context=JSON.stringify(ctx.rows).slice(0,14000);return row;
   });
   if(!job)return false;
+  if(job.target?.startsWith('council:')){
+    const save=hosted()?event=>storage('council',event):event=>transaction(async c=>{
+      const current=await one(c,'SELECT * FROM tasks WHERE id=$1 FOR UPDATE',[job.id]);
+      if(!current)return {ok:false};
+      const result=transition(current,event);
+      if(result.object){
+        const page=current.target.slice(8);
+        requireThat(await one(c,'SELECT 1 FROM members WHERE project=$1 AND record=$2',[current.project,'page:'+page]),'Shared page removed',409);
+        await edit(c,{owner:true},current.project,canvasMark(page,randomUUID(),result.author,result.object));
+      }
+      if(result.message)await message(c,current.project,result.author||'Orchestrator',result.message,current.anchor,null,current.id);
+      await c.query('UPDATE tasks SET state=$1,stage=$2,history=$3,lease=$4 WHERE id=$5',[current.state,current.stage,JSON.stringify(current.history),current.lease,current.id]);
+      return {ok:result.ok};
+    });
+    await runCouncil(job,generate,save,randomUUID);return true;
+  }
   const model=job.models[job.stage];
   const phase=job.models.length===4?['Plan','Execute','Collaborate','Review']:Object.keys(directions);
   const canvas=job.target?.startsWith('canvas:');

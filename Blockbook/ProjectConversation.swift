@@ -169,7 +169,7 @@ struct ProjectConversation: View {
                             Divider()
                             Text(task.brief).font(.subheadline.bold())
                             Text(task.state + " · " + task.models.map(displayModel).joined(separator:" → ")).font(.caption)
-                            if !["completed","cancelled"].contains(task.state) {
+                            if !["completed","cancelled","needs_review"].contains(task.state) {
                                 HStack { Button(task.state=="queued" ? "Pause" : "Start or resume") { send("control_task",extra:["command":task.state=="queued" ? "pause":"resume","task":task.id]) }
                                     Button("Cancel task",role:.destructive) { send("control_task",extra:["command":"cancel","task":task.id]) } }.font(.caption)
                             }
@@ -187,7 +187,7 @@ struct ProjectConversation: View {
                     }
                 }
                 TextField("Message or assignment",text:$draft,axis:.vertical).textFieldStyle(.roundedBorder)
-                HStack { Button("Post") { send("post_message") }; Button(WorkspaceConnection.deviceProject != nil ? "Propose assignment" : (anchor == nil ? "Assign to team" : "Edit canvas")) {
+                HStack { Button("Post") { send("post_message") }; Button(WorkspaceConnection.deviceProject != nil ? "Propose assignment" : (anchor == nil ? "Assign to team" : "Start council")) {
                     send("assign_task",extra:anchor == nil ? [:] : ["agents":canvasAgents.filter(chosen.contains)])
                 }.disabled(anchor != nil && chosen.isEmpty) }.disabled(saving || draft.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
             } else {

@@ -71,16 +71,19 @@ test('shared workspace integration', {skip:!process.env.TEST_DATABASE_URL}, asyn
     const anchor='goodestnotes://paper/'+randomUUID()+'/page/'+sheet;
     const task=await act('assign_task',{text:'Label the circuit',anchor,agents:all});
     const seen=[];
-    for(const model of all)await tick(async (actual,prompt)=>{
-      assert.equal(actual,model);
-      if(seen.length)assert.ok(prompt.includes('Handoff from '+seen.at(-1)));
-      seen.push(actual);return JSON.stringify({message:'Handoff from '+model,object:{kind:'text',title:model,x:80*seen.length,y:100}});
+    for(let phase=0;phase<3;phase++)await tick(async (model,prompt)=>{
+      seen.push(model);
+      if(phase===0)return JSON.stringify({message:'Check contact',object:{kind:'text',title:'Contact',x:90,y:80}});
+      if(phase===1){for(const name of all)assert.ok(!prompt.includes(name));return JSON.stringify({message:'B preserves the pivot.',ranking:['B','A','C','D']});}
+      assert.ok(prompt.includes('B preserves the pivot.'));
+      return JSON.stringify({choice:'adopt',labels:['B'],message:'Keep the pivot and its label.'});
     });
+    assert.equal(seen.length,9);
     const space=await act('read_space'),objects=space.records.filter(r=>r.kind==='object');
     assert.deepEqual(objects.map(r=>r.body.author).sort(),[...all].sort());
     const conversation=await act('read_conversation');
     assert.equal(conversation.tasks.find(t=>t.id===task.id).state,'completed');
-    assert.deepEqual(conversation.messages.filter(m=>m.task===task.id&&m.author!=='Orchestrator').slice(1).map(m=>m.author),all);
+    assert.equal(conversation.messages.filter(m=>m.task===task.id&&all.includes(m.author)).length,9);
     const object=objects[0].body.item.id;
     const change=args({object,page:sheet,revision:1,kind:'text',title:'Switch',x:80,y:80});
     assert.equal((await result(await call(chat,'edit_canvas_object',change))).rev,2);

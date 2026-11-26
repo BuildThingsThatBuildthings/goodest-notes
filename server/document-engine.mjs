@@ -1,3 +1,4 @@
+import {councilTeam,transition} from './council.mjs';
 import {canvasTeam,canvasMark,canvasReply,canvasSnapshot} from './canvas.mjs';
 import {models,team,providers,monthlyLimit,month} from './models.mjs';
 import {canonicalJSON as canonical} from './json.mjs';
@@ -82,10 +83,10 @@ async function action(db,who,op,args){
     const match=/^goodestnotes:\/\/paper\/[a-f0-9-]{36}\/page\/([a-f0-9-]{36})(?:\?|$)/i.exec(args.anchor||'');
     const key=match?'note:'+match[1].toLowerCase():'',target=key&&await db.get('member',p+'/'+key)?await db.get('record',key):null;
     if(args.agents)check(target&&await db.get('member',p+'/page:'+match[1].toLowerCase()),'Select a shared page');
-    const job={id,project:p,brief,models:args.agents?canvasTeam(args.agents):team(main),state,anchor:args.anchor||null,stage:0,history:[],lease:null,snapshot:args.agents?canvasSnapshot(args.snapshot):null,target:args.agents?'canvas:'+match[1].toLowerCase():target?.id||null,base:target?.rev||0,created:Date.now()};
+    const job={id,project:p,brief,models:args.agents?councilTeam(canvasTeam(args.agents),main):team(main),state,anchor:args.anchor||null,stage:0,history:[],lease:null,snapshot:args.agents?canvasSnapshot(args.snapshot):null,target:args.agents?'council:'+match[1].toLowerCase():target?.id||null,base:target?.rev||0,created:Date.now()};
     await saveJob(db,job);await post(db,p,who.name,brief,args.anchor,null,id);result={id,state};
   }else if(op==='control_task'){
-    check(who.owner,'Owner required',403);const j=await db.get('task',identifier(args.task));check(j?.project===p,'Unknown task',404);check(!['completed','cancelled'].includes(j.state),'Task already closed',409);
+    check(who.owner,'Owner required',403);const j=await db.get('task',identifier(args.task));check(j?.project===p,'Unknown task',404);check(!['completed','cancelled','needs_review'].includes(j.state),'Task already closed',409);
     const state={pause:'paused',resume:'queued',cancel:'cancelled'}[args.command];check(state,'Invalid command');j.state=state;await saveJob(db,j);result={id:j.id,state};
   }else check(false,'Unknown operation',404);
   await db.put('receipt',receipt,p,{args,result});return result;
@@ -146,6 +147,16 @@ export async function execute(db,cmd,a){
     const p=await db.get('project',j.project),members=await db.list('member',j.project,'',80),context=[];
     for(const m of members.filter(m=>/^(note|paper|block|object|page):/.test(m.id)))context.push(await db.get('record',m.id));
     return {...j,rules:p.rules,context:JSON.stringify(context).slice(0,14000)};
+  }
+  if(cmd==='council'){
+    const j=await db.get('task',a.id);if(!j||!j.target?.startsWith('council:'))return {ok:false};
+    const result=transition(j,a),page=j.target.slice(8);
+    if(result.object){
+      check(await db.get('member',j.project+'/page:'+page),'Shared page removed',409);
+      await edit(db,{owner:true},j.project,canvasMark(page,uid(),result.author,result.object));
+    }
+    if(result.message)await post(db,j.project,result.author||'Orchestrator',result.message,j.anchor,null,j.id);
+    await saveJob(db,j);return {ok:result.ok};
   }
   if(cmd==='commit'){
     const j=await db.get('task',a.id);if(!j||j.lease!==a.lease)return false;j.lease=null;

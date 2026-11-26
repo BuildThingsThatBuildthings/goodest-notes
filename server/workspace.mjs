@@ -1,3 +1,4 @@
+import {councilTeam} from './council.mjs';
 import {canvasTeam,canvasMark,canvasSnapshot} from './canvas.mjs';
 import {state} from './hosted.mjs';
 import {randomUUID} from 'node:crypto';
@@ -113,13 +114,13 @@ export async function action(c,who,op,args) {
       const match=/^goodestnotes:\/\/paper\/[0-9a-f-]{36}\/page\/([0-9a-f-]{36})(?:\?|$)/i.exec(args.anchor || '');
       const target=match && await one(c,"SELECT r.id,r.rev FROM records r JOIN members m ON m.record=r.id WHERE m.project=$1 AND r.id=$2 AND r.kind='note'",[p,'note:'+match[1].toLowerCase()]);
       if(args.agents)requireThat(target&&await one(c,'SELECT 1 FROM members WHERE project=$1 AND record=$2',[p,'page:'+match[1].toLowerCase()]),'Select a shared page',400);
-      await c.query('INSERT INTO tasks(id,project,brief,anchor,state,models,target,base,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[id,p,brief,args.anchor||null,state,JSON.stringify(args.agents?canvasTeam(args.agents):team(main)),args.agents?'canvas:'+match[1].toLowerCase():target?.id,target?.rev,args.agents?canvasSnapshot(args.snapshot):null]);
+      await c.query('INSERT INTO tasks(id,project,brief,anchor,state,models,target,base,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[id,p,brief,args.anchor||null,state,JSON.stringify(args.agents?councilTeam(canvasTeam(args.agents),main):team(main)),args.agents?'council:'+match[1].toLowerCase():target?.id,target?.rev,args.agents?canvasSnapshot(args.snapshot):null]);
       await message(c,p,who.name,brief,args.anchor,null,id);return {id,state};
     }
     if(op==='control_task'){
       requireThat(who.owner && ['pause','resume','cancel'].includes(args.command),'Owner task control required',403);
       const state={pause:'paused',resume:'queued',cancel:'cancelled'}[args.command];
-      const task=await one(c,"UPDATE tasks SET state=$1 WHERE id=$2 AND project=$3 AND state NOT IN ('completed','cancelled') RETURNING id,state",[state,uuid(args.task),p]);
+      const task=await one(c,"UPDATE tasks SET state=$1 WHERE id=$2 AND project=$3 AND state NOT IN ('completed','cancelled','needs_review') RETURNING id,state",[state,uuid(args.task),p]);
       requireThat(task,'Task is already closed',409);return task;
     }
     throw Object.assign(new Error('Unknown operation'),{status:404});
