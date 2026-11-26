@@ -1,3 +1,4 @@
+import {readText} from './request.mjs';
 import {state as hostedState} from './hosted.mjs';
 import { createHmac, createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { one, many, requireThat, uuid } from './db.mjs';
@@ -51,7 +52,7 @@ export async function oauth(req,path,c) {
     const p=url.searchParams, {client,redirect,challenge}=authInput(p);
     if(req.method==='GET') return page('Connect Goodest Notes','<p>Give '+html(clientLabel(client))+' access to one project. Find its ID under Project conversation on the iPad.</p><form method="post"><label>Owner key <input name="owner" type="password" required></label><label>Project ID <input name="project" required></label><button>Connect '+html(clientLabel(client))+'</button></form>');
     requireThat(req.method==='POST' && req.headers.get('origin')===base,'Invalid submission',403);
-    const form=await req.formData(); requireThat(owner(form.get('owner')),'Invalid owner key',401);
+    const form=new URLSearchParams(await readText(req,16384)); requireThat(owner(form.get('owner')),'Invalid owner key',401);
     const project=uuid(form.get('project')); requireThat(c.hosted?await hostedState('exists',{id:project}):await one(c,'SELECT id FROM projects WHERE id=$1',[project]),'Unknown project',404);
     const code=secret();
     if(c.hosted)await hostedState('code',{hash:digest(code),client,redirect,challenge,project});
@@ -61,14 +62,14 @@ export async function oauth(req,path,c) {
   }
   if(path==='/revoke'){
     requireThat(req.method==='POST','POST required',405);
-    const form=new URLSearchParams(await req.text()),hash=digest(form.get('token')||''),client=form.get('client_id');
+    const form=new URLSearchParams(await readText(req,16384)),hash=digest(form.get('token')||''),client=form.get('client_id');
     if(c.hosted)await hostedState('revokeToken',{hash,client});
     else await c.query('UPDATE grants SET revoked=true WHERE client=$1 AND (access_hash=$2 OR refresh_hash=$2)',[client,hash]);
     return new Response(null,{status:200,headers:{'Cache-Control':'no-store'}});
   }
   if(path==='/token') {
     requireThat(req.method==='POST','POST required',405);
-    const p=new URLSearchParams(await req.text()), client=p.get('client_id'), a=secret(), r=secret();
+    const p=new URLSearchParams(await readText(req,16384)), client=p.get('client_id'), a=secret(), r=secret();
     requireThat(!p.get('resource')||p.get('resource')===base+'/mcp','Invalid resource');
     if(c.hosted){
       requireThat(['refresh_token','authorization_code'].includes(p.get('grant_type')),'Unknown grant');
