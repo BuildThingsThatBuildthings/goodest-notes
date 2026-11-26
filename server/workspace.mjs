@@ -1,6 +1,7 @@
 import {state} from './hosted.mjs';
 import {randomUUID} from 'node:crypto';
 import {digest,scope} from './auth.mjs';
+import {canonicalJSON} from './json.mjs';
 import {one,many,requireThat,string,uuid} from './db.mjs';
 import {models,team,month,limit} from './models.mjs';
 
@@ -14,10 +15,14 @@ export async function accounts(c) {
 }
 
 export async function replay(c,who,p,id,body,run) {
-  const identity=who.grant||who.name, request=digest(JSON.stringify(body));
+  const identity=who.grant||who.name, request=digest(canonicalJSON(body));
   await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[identity+p+id]);
   const previous=await one(c,'SELECT request,response FROM receipts WHERE actor=$1 AND project=$2 AND id=$3',[identity,p,id]);
-  if(previous){requireThat(previous.request===request,'Request ID used for different content',409);return previous.response;}
+  if(previous){
+    const matches = previous.request === request || previous.request === digest(JSON.stringify(body));
+    requireThat(matches,'Request ID used for different content',409);
+    return previous.response;
+  }
   const result=await run();
   await c.query('INSERT INTO receipts VALUES($1,$2,$3,$4,$5)',[identity,p,id,request,JSON.stringify(result)]);
   return result;

@@ -164,6 +164,15 @@ struct Workspace: View {
             return .systemAction
         })
         .onOpenURL { _ = follow($0) }
+        #if DEBUG
+        .task {
+            let arguments = ProcessInfo.processInfo.arguments
+            if arguments.contains("--classroom-ui-test"), arguments.contains("--open-test-circuit") {
+                do { destination = .paper(try await CircuitLesson.add(to: studio), nil) }
+                catch { studio.issue = error.localizedDescription }
+            }
+        }
+        #endif
         .sheet(isPresented: $agentSettings) { AgentSettings() }
         .task(id: scenePhase) {
             while scenePhase == .active && !Task.isCancelled {

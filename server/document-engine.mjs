@@ -1,4 +1,5 @@
 import {models,team,limit,month} from './models.mjs';
+import {canonicalJSON as canonical} from './json.mjs';
 
 // Runs inside a single serializable database transaction. All client identities
 // have already been authenticated by the HTTP service, and scope is checked here.
@@ -6,7 +7,6 @@ const check=(value,message,status=400)=>{if(!value)throw Error('WORKSPACE_'+stat
 const identifier=v=>{check(typeof v==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(v),'Invalid identifier');return v.toLowerCase()};
 const text=(v,max=64000)=>{check(typeof v==='string'&&v.trim()&&v.length<=max,'Invalid text');return v;};
 const uid=()=>'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,ch=>(ch==='x'?Math.floor(Math.random()*16):8+Math.floor(Math.random()*4)).toString(16));
-const canonical=value=>JSON.stringify(value,(_,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
 const seqKey=seq=>String(seq).padStart(16,'0');
 async function ledger(db,provider,period=month()) {return await db.get('ledger',provider+period)||{provider,period,spent:0,reserved:0};}
 async function bill(db,id,amount){

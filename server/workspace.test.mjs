@@ -46,7 +46,8 @@ test('shared workspace integration', {skip:!process.env.TEST_DATABASE_URL}, asyn
   await t.test('two isolated clients share page-linked communication while the tablet is offline',async()=>{
     const post=args({text:'Close the switch',anchor:'goodestnotes://paper/'+randomUUID()+'/page/'+sheet});
     const a=await result(await call(chat,'post_message',post));
-    const retry=await result(await call(chat,'post_message',post));assert.equal(a.id,retry.id);
+    const reordered=Object.fromEntries(Object.entries(post).reverse());
+    const retry=await result(await call(chat,'post_message',reordered));assert.equal(a.id,retry.id);
     await result(await call(claude,'edit_note',args({record,revision:1,text:'Switch closed'})));
     await result(await call(claude,'post_message',args({reply:a.id,text:'Switch is now closed',anchor:a.anchor})));
     const history=await result(await call(chat,'read_conversation',{project}));

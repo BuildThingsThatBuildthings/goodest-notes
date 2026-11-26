@@ -68,6 +68,8 @@ Ask one chat to post a request linked to a page. Ask the other chat to read it, 
 
 **Claude Opus 5.5** is the initial main agent. Pick a different main agent in Agent settings whenever needed. Existing tasks show their original team. A human assignment starts a run. Assignments proposed through a chat connector wait for owner confirmation. A provider failure pauses the run and retains its previous stages.
 
+For a Netlify deployment, save dedicated OpenAI and Anthropic keys in the site's environment variables as `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`. Give them the Functions scope and Production context, then redeploy. For Compose, save the keys in the server's private `.env` and run `docker compose up -d` to reload the web and worker services. Open **Agent settings** and check which model IDs each provider makes available to your account. The chat connectors authorize independently from these API keys.
+
 Each provider has a separate $75 calendar-month limit in UTC. The service reserves a maximum estimate transactionally before calling a provider. Uncertain delivery retains the reservation. The workspace reports spent, reserved and available dollars. These limits apply to calls made through Goodest Notes with its dedicated keys. Hosting and chat subscription use are billed by their respective services.
 
 ## Back up and restore

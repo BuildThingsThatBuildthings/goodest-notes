@@ -3,6 +3,7 @@ import {join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {database,migrate,transaction,one} from '../server/db.mjs';
 import {digest} from '../server/auth.mjs';
+import {canonicalJSON} from '../server/json.mjs';
 
 const folder=process.argv[2];
 if(!folder||!process.env.DATABASE_URL)throw Error('Specify an extracted Convex backup and DATABASE_URL for an empty PostgreSQL database.');
@@ -32,7 +33,7 @@ await transaction(async c=>{
     if(result?.storage){const filename=(await readdir(join(folder,'_storage'))).find(f=>f===result.storage||f.startsWith(result.storage+'.'));if(!filename)throw Error('Cached media file missing');result={format:result.format,data:(await readFile(join(folder,'_storage',filename))).toString('base64')};}
     await c.query('INSERT INTO visuals VALUES($1,$2,$3,$4)',[key,r.signature,r.reservation,result?json(result):null]);
   }
-  for(const {key,value:r} of rows('receipt')){const [actor,p,id]=key.split('/');await c.query('INSERT INTO receipts VALUES($1,$2,$3,$4,$5)',[actor,p,id,digest(json(r.args)),json(r.result)]);}
+  for(const {key,value:r} of rows('receipt')){const [actor,p,id]=key.split('/');await c.query('INSERT INTO receipts VALUES($1,$2,$3,$4,$5)',[actor,p,id,digest(canonicalJSON(r.args)),json(r.result)]);}
   const main=rows('setting').find(r=>r.key==='main')?.value;
   if(main)await c.query('UPDATE settings SET main=$1 WHERE id=1',[main]);
 });

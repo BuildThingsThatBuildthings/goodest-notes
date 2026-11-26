@@ -61,7 +61,17 @@ struct PaperEditor: View {
                             Button((asset.caption.isEmpty ? "Drawing" : asset.caption)+" · "+(asset.filename as NSString).pathExtension.uppercased()) {playing=asset.id}
                         }}
                     }
-                    Button(playing != nil ? "Turn motion off" : "Play teaching visual",systemImage:playing != nil ? "pause.circle" : "play.circle") { playing = playing != nil ? nil : visual.id }.font(.footnote)
+                    Button {
+                        playing = playing == nil ? visual.id : nil
+                    } label: {
+                        Label(playing == nil ? "Play teaching visual" : "Turn motion off",
+                              systemImage: playing == nil ? "play.circle" : "pause.circle")
+                            .frame(minHeight: 44)
+                            .padding(.horizontal, 8)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityIdentifier("Teaching playback")
+                    .accessibilityValue(playing == nil ? "Paused" : "Playing")
                     }
                 }
                 if instrument == .motion { Text("Lasso the ink you want to bring to life.").font(.footnote) }

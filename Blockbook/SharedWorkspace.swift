@@ -177,6 +177,42 @@ private struct RecordSnapshot {
         await sync(project,studio:studio)
     }
 
+    private func receiveVisuals(_ rows: [[String:Any]], project: UUID, studio: Studio) async throws {
+        let assets = rows.filter { $0["kind"] as? String == "asset" }
+        for row in rows where row["kind"] as? String == "page" {
+            guard let body = row["body"] as? [String:Any], body["visual"] != nil || body["savedVisuals"] != nil else { continue }
+            let remote = try JSONDecoder().decode(SheetPage.self, from: JSONSerialization.data(withJSONObject: body))
+            guard let paper = studio.library.papers.first(where: { $0.pages.contains(where: { $0.id == remote.id }) }),
+                  let page = paper.pages.first(where: { $0.id == remote.id }) else { continue }
+            for visual in remote.teachingVisuals where !page.teachingVisuals.contains(where: { $0.id == visual.id }) {
+                let path = "Assets/" + visual.filename
+                guard let asset = assets.first(where: { ($0["body"] as? [String:Any])?["path"] as? String == path }) else {
+                    throw WorkspaceError.message("Waiting for the shared visual’s attachment.")
+                }
+                let staging = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+                defer { try? FileManager.default.removeItem(at: staging) }
+                try await WorkspaceFile.restore(asset, project: project, into: staging)
+                let source = staging.appendingPathComponent(path)
+                let target = studio.folder.appendingPathComponent(path)
+                try await Task.detached(priority: .utility) {
+                    let fm = FileManager.default
+                    try fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    if fm.fileExists(atPath: target.path) {
+                        guard fm.contentsEqual(atPath: target.path, andPath: source.path) else {
+                            throw WorkspaceError.message("The iPad and shared workspace have different versions of this visual.")
+                        }
+                    } else { try fm.copyItem(at: source, to: target) }
+                }.value
+                guard studio.editPage(paper.id, remote.id, { sheet in
+                    var all = sheet.teachingVisuals
+                    if !all.contains(where: { $0.id == visual.id }) { all.append(visual) }
+                    sheet.savedVisuals = all
+                    if sheet.visual == nil { sheet.visual = visual }
+                }) else { throw WorkspaceError.message("Could not attach the shared visual to the page.") }
+            }
+        }
+    }
+
     func sync(_ project: Project, studio: Studio) async {
         let id = project.id
         guard shared(id), projectsInFlight.insert(id).inserted else { return }
@@ -197,21 +233,29 @@ private struct RecordSnapshot {
             if let scope=WorkspaceConnection.deviceProject {
                 guard scope==id else{return}
                 let remote=try await WorkspaceConnection.action("read_space",project:id)
-                let notes=(remote["records"] as? [[String:Any]] ?? []).filter{$0["kind"] as? String=="note"}
+                let rows = remote["records"] as? [[String:Any]] ?? []
+                try await receiveVisuals(rows, project: id, studio: studio)
+                let notes=rows.filter{$0["kind"] as? String=="note"}
+                var conflicts = (remote["conflicts"] as? [[String:Any]] ?? []).count
                 for row in notes {
                     guard let key=row["id"] as? String,let sheet=UUID(uuidString:String(key.dropFirst(5))),let rev=row["rev"] as? Int,let body=row["body"] as? [String:Any],let text=body["text"] as? String,let local=local.first(where:{$0.id==key}),let paper=studio.library.papers.first(where:{$0.pages.contains(where:{$0.id==sheet})}),let current=paper.pages.first(where:{$0.id==sheet}) else{continue}
                     if let base=baselines[key],base != local.hash,let typed=local.body["text"] as? String {
-                        let requestKey=self.key(id,"deviceNote."+key+"."+local.hash)
+                        let baseRevision = versions[key] ?? 0
+                        let requestKey=self.key(id,"deviceNote."+key+"."+String(baseRevision)+"."+local.hash)
                         let request=defaults.string(forKey:requestKey) ?? UUID().uuidString;defaults.set(request,forKey:requestKey)
-                        _ = try await WorkspaceConnection.action("edit_note",project:id,args:["request_id":request,"record":key,"revision":versions[key] ?? 0,"text":typed])
-                        baselines[key]=local.hash;continue
+                        let ack = try await WorkspaceConnection.action("edit_note",project:id,args:["request_id":request,"record":key,"revision":baseRevision,"text":typed])
+                        guard let acceptedRevision = ack["rev"] as? Int else { throw WorkspaceError.message("Missing page edit receipt.") }
+                        versions[key]=acceptedRevision;baselines[key]=local.hash
+                        if ack["conflict"] != nil { conflicts += 1 }
+                        defaults.set(baselines,forKey:self.key(id,"hash"));defaults.set(versions,forKey:self.key(id,"versions"))
+                        defaults.removeObject(forKey:requestKey);continue
                     }
                     if current.typed != text && current.typed == local.body["text"] as? String {_=studio.editPage(paper.id,sheet){$0.typed=text}}
                     baselines[key]=try RecordSnapshot.hash(body);versions[key]=rev
                 }
                 guard studio.flushWrites() else{throw WorkspaceError.message("Could not save downloaded text.")}
                 defaults.set(baselines,forKey:key(id,"hash"));defaults.set(versions,forKey:key(id,"versions"))
-                status[id]="Page text synced · project access";return
+                status[id]=conflicts == 0 ? "Synced · project access" : "\(conflicts) conflicting edits";return
             }
             let changes = local.filter { baselines[$0.id] != $0.hash }
             let removed = Set(baselines.keys).subtracting(local.map(\.id))
