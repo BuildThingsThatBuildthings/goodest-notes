@@ -49,9 +49,14 @@ try{
   assert.deepEqual(thread.messages.slice(-2).map(m=>m.author),['ChatGPT','Claude']);assert.equal(thread.messages.at(-1).reply,post.id);
   assert.equal(space.records.find(r=>r.kind==='note').rev,revision+1);
   assert.equal((await route('/v1/settings',c,{main:'gpt-6.2-sol'})).status,403);
+  const mark=await result(await call(g,'add_canvas_object',args({page,kind:'rectangle',title:'Canvas verification',x:100,y:180})));
+  const edit=await result(await call(c,'edit_canvas_object',args({page,object:mark.id.slice(7),revision:mark.rev,kind:'rectangle',title:'Verified shared canvas edit',x:120,y:180})));
+  assert.equal(edit.rev,2);
+  const updated=await result(await call(g,'read_space',{project:id}));
+  assert.equal(updated.records.find(r=>r.id===mark.id).body.item.title,'Verified shared canvas edit');
   await revoke(grants.find(x=>x.token===c).client,c);
   assert.equal((await call(c,'read_space',{project:id})).status,401);assert.equal((await call(g,'read_space',{project:id})).status,200);
-  console.log(JSON.stringify({project:id,revision:revision+1,verified:['two OAuth grants','retry-safe page-linked messages','shared page edit','reply and readback','owner boundary','independent revocation']}));
+  console.log(JSON.stringify({project:id,revision:revision+1,verified:['two OAuth grants','retry-safe page-linked messages','shared page edit','attributed canvas creation and revision','reply and readback','owner boundary','independent revocation']}));
 }finally{
   for(const {client,token} of grants)await revoke(client,token);
 }

@@ -177,6 +177,30 @@ private struct RecordSnapshot {
         await sync(project,studio:studio)
     }
 
+    private func receiveAgentObjects(_ records: [[String:Any]], project:UUID, studio: Studio) throws {
+        for row in records where row["kind"] as? String == "object" {
+            guard let body=row["body"] as? [String:Any],let page=(body["page"] as? String).flatMap(UUID.init(uuidString:)),
+                  let data=body["item"] as? [String:Any], let paper=studio.library.papers.first(where:{$0.pages.contains(where:{$0.id==page})}) else {continue}
+            let item=try JSONDecoder().decode(CanvasItem.self,from:JSONSerialization.data(withJSONObject:data))
+            let receipt=key(project,"canvas."+item.id.uuidString+"."+studio.folder.path)
+            let version=row["rev"] as? Int ?? 1
+            let defaults=UserDefaults.standard
+            guard defaults.integer(forKey:receipt)<version else {continue}
+            let previous=defaults.data(forKey:receipt+".item").flatMap {try? JSONDecoder().decode(CanvasItem.self,from:$0)}
+            guard studio.editPage(paper.id,page,{ sheet in
+                var canvas=sheet.canvas ?? CanvasContent()
+                if let i=canvas.items.firstIndex(where:{$0.id==item.id}) {
+                    if let previous,canvas.items[i] != previous,canvas.items[i] != item {
+                        var localCopy=canvas.items[i];localCopy.id=UUID();canvas.items.append(localCopy)
+                    }
+                    canvas.items[i]=item
+                } else {canvas.items.append(item)}
+                sheet.canvas=canvas
+            }),studio.flushWrites() else {throw WorkspaceError.message("Could not save the agent edit.")}
+            defaults.set(try JSONEncoder().encode(item),forKey:receipt+".item")
+            defaults.set(version,forKey:receipt)
+        }
+    }
     private func receiveVisuals(_ rows: [[String:Any]], project: UUID, studio: Studio) async throws {
         let assets = rows.filter { $0["kind"] as? String == "asset" }
         for row in rows where row["kind"] as? String == "page" {
@@ -234,6 +258,7 @@ private struct RecordSnapshot {
                 guard scope==id else{return}
                 let remote=try await WorkspaceConnection.action("read_space",project:id)
                 let rows = remote["records"] as? [[String:Any]] ?? []
+                try receiveAgentObjects(rows,project:id,studio:studio)
                 try await receiveVisuals(rows, project: id, studio: studio)
                 let notes=rows.filter{$0["kind"] as? String=="note"}
                 var conflicts = (remote["conflicts"] as? [[String:Any]] ?? []).count
@@ -280,6 +305,7 @@ private struct RecordSnapshot {
             }
             let state = try await WorkspaceConnection.action("read_space",project:id)
             let records = state["records"] as? [[String:Any]] ?? []
+            try receiveAgentObjects(records,project:id,studio:studio)
             let conflicts = state["conflicts"] as? [[String:Any]] ?? []
             for row in records {
                 guard row["kind"] as? String == "note", let record = row["id"] as? String, let version = row["rev"] as? Int, let body = row["body"] as? [String:Any], let text = body["text"] as? String, let page = UUID(uuidString:String(record.dropFirst(5))), let old = local.first(where: { $0.id == record }), let paper = studio.library.papers.first(where: { $0.pages.contains(where: { $0.id == page }) }), let current = paper.pages.first(where: { $0.id == page }) else { continue }

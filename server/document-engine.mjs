@@ -1,4 +1,5 @@
-import {models,team,limit,month} from './models.mjs';
+import {canvasTeam,canvasMark,canvasReply,canvasSnapshot} from './canvas.mjs';
+import {models,team,providers,monthlyLimit,month} from './models.mjs';
 import {canonicalJSON as canonical} from './json.mjs';
 
 // Runs inside a single serializable database transaction. All client identities
@@ -16,8 +17,8 @@ async function bill(db,id,amount){
   await db.put('ledger',row.provider+row.period,'',balance);await db.put('reservation',id,row.period,{...row,charged:amount});
 }
 async function reserve(db,provider,max){
-  check(['openai','anthropic'].includes(provider),'Unknown provider');const balance=await ledger(db,provider);
-  check(Number.isSafeInteger(max)&&max>0&&balance.spent+balance.reserved+max<=limit,'Monthly budget reached',402);
+  check(providers.includes(provider),'Unknown provider');const balance=await ledger(db,provider);
+  check(Number.isSafeInteger(max)&&max>0&&balance.spent+balance.reserved+max<=monthlyLimit(provider),'Monthly budget reached',402);
   const id=uid();balance.reserved+=max;await db.put('ledger',provider+balance.period,'',balance);
   await db.put('reservation',id,balance.period,{id,provider,period:balance.period,reserved:max,charged:null});return id;
 }
@@ -59,6 +60,14 @@ async function action(db,who,op,args){
   const prior=await db.get('receipt',receipt);if(prior){check(canonical(prior.args)===canonical(args),'Request ID used for different content',409);return prior.result;}
   let result;
   if(op==='post_message')result=await post(db,p,who.name,args.text,args.anchor,args.reply);
+  else if(op==='add_canvas_object'||op==='edit_canvas_object'){
+    const page=identifier(args.page);check(await db.get('member',p+'/page:'+page),'Unknown shared page',404);
+    const updating=op==='edit_canvas_object',id=updating?identifier(args.object):uid();
+    const mark=canvasMark(page,id,who.name,args);
+    if(updating){const existing=await db.get('record',mark.id);check(existing?.body.page===page&&await db.get('member',p+'/'+mark.id),'Unknown canvas object',404);mark.base=args.revision;}
+    result=await edit(db,{owner:true,name:who.name},p,mark);
+    await post(db,p,who.name,(result.conflict?'Preserved conflicting edit':updating?'Updated':'Added')+' '+args.kind+' · '+args.title);
+  }
   else if(op==='edit_note')result=await edit(db,who,p,{id:args.record,kind:'note',base:args.revision,body:{text:args.text}});
   else if(op==='sync'){
     check(who.owner&&Array.isArray(args.changes)&&args.changes.length<=1000,'Owner sync required',403);
@@ -72,7 +81,8 @@ async function action(db,who,op,args){
     const id=uid(),main=await db.get('setting','main')||'claude-opus-5-5',state=who.owner?'queued':'awaiting_owner',brief=text(args.text,16000);
     const match=/^goodestnotes:\/\/paper\/[a-f0-9-]{36}\/page\/([a-f0-9-]{36})(?:\?|$)/i.exec(args.anchor||'');
     const key=match?'note:'+match[1].toLowerCase():'',target=key&&await db.get('member',p+'/'+key)?await db.get('record',key):null;
-    const job={id,project:p,brief,models:team(main),state,anchor:args.anchor||null,stage:0,history:[],lease:null,target:target?.id||null,base:target?.rev||0,created:Date.now()};
+    if(args.agents)check(target&&await db.get('member',p+'/page:'+match[1].toLowerCase()),'Select a shared page');
+    const job={id,project:p,brief,models:args.agents?canvasTeam(args.agents):team(main),state,anchor:args.anchor||null,stage:0,history:[],lease:null,snapshot:args.agents?canvasSnapshot(args.snapshot):null,target:args.agents?'canvas:'+match[1].toLowerCase():target?.id||null,base:target?.rev||0,created:Date.now()};
     await saveJob(db,job);await post(db,p,who.name,brief,args.anchor,null,id);result={id,state};
   }else if(op==='control_task'){
     check(who.owner,'Owner required',403);const j=await db.get('task',identifier(args.task));check(j?.project===p,'Unknown task',404);check(!['completed','cancelled'].includes(j.state),'Task already closed',409);
@@ -97,7 +107,7 @@ export async function execute(db,cmd,a){
   if(cmd==='action')return action(db,a.who,a.op,a.args);
   if(cmd==='settings'){
     if(a.main){check(Object.hasOwn(models,a.main),'Unknown model');await db.put('setting','main','',a.main);}
-    const accounts=await Promise.all(['openai','anthropic'].map(async provider=>{const b=await ledger(db,provider);return {provider,spent:b.spent/1e6,reserved:b.reserved/1e6,remaining:(limit-b.spent-b.reserved)/1e6}}));
+    const accounts=await Promise.all(providers.map(async provider=>{const b=await ledger(db,provider);return {provider,spent:b.spent/1e6,reserved:b.reserved/1e6,remaining:(monthlyLimit(provider)-b.spent-b.reserved)/1e6}}));
     return {main:await db.get('setting','main')||'claude-opus-5-5',models:Object.keys(models),accounts};
   }
   if(cmd==='rules'){const p=await db.get('project',identifier(a.project));check(p&&typeof a.rules==='string'&&a.rules.length<=8000,'Invalid rules');p.rules=a.rules;await db.put('project',p.id,'',p);return p;}
@@ -132,16 +142,20 @@ export async function execute(db,cmd,a){
     for(const l of await db.list('leased','','',50)){if(l.until<Date.now()){const j=await db.get('task',l.id);j.lease=null;if(j.state==='queued')j.state='paused';await saveJob(db,j);}}
     const j=(await db.list('task','queued','',50)).find(j=>!j.lease);if(!j)return null;
     j.lease=uid();j.until=Date.now()+180000;await saveJob(db,j);
+    if(j.target?.startsWith("canvas:"))await post(db,j.project,"Orchestrator",j.models[j.stage]+" started a canvas turn.",j.anchor,null,j.id);
     const p=await db.get('project',j.project),members=await db.list('member',j.project,'',80),context=[];
-    for(const m of members.filter(m=>/^(note|paper|block):/.test(m.id)))context.push(await db.get('record',m.id));
+    for(const m of members.filter(m=>/^(note|paper|block|object|page):/.test(m.id)))context.push(await db.get('record',m.id));
     return {...j,rules:p.rules,context:JSON.stringify(context).slice(0,14000)};
   }
   if(cmd==='commit'){
     const j=await db.get('task',a.id);if(!j||j.lease!==a.lease)return false;j.lease=null;
     if(j.state==='cancelled'){await saveJob(db,j);return true;}
     if(a.error){if(j.state==='queued')j.state='paused';await post(db,j.project,'Orchestrator',a.error,j.anchor,null,j.id);}
-    else {const model=j.models[j.stage];j.history.push({model,result:a.result});await post(db,j.project,model,a.result,j.anchor,null,j.id);j.stage++;
-      if(j.stage===j.models.length){j.state='completed';if(j.target&&await db.get('member',j.project+'/'+j.target)){
+    else {const model=j.models[j.stage];if(j.target?.startsWith('canvas:')){
+      const page=j.target.slice(7);check(await db.get('member',j.project+'/page:'+page),'Shared page removed',409);
+      const turn=canvasReply(a.result,page,uid(),model);await edit(db,{owner:true},j.project,turn.mark);a={...a,result:turn.message,object:turn.mark.body.item};
+    }j.history.push({model,result:a.result,...(a.object?{object:a.object}:{})});await post(db,j.project,model,a.result,j.anchor,null,j.id);j.stage++;
+      if(j.stage===j.models.length){j.state='completed';if(j.target&&!j.target.startsWith('canvas:')&&await db.get('member',j.project+'/'+j.target)){
         const r=await edit(db,{name:model},j.project,{id:j.target,kind:'note',base:j.base,body:{text:a.result}});await post(db,j.project,'Orchestrator',r.conflict?'Concurrent edit preserved for review.':'Saved the reviewed result to the linked page.',j.anchor,null,j.id);}
       }
     }await saveJob(db,j);return true;

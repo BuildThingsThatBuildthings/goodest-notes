@@ -3,12 +3,13 @@ import PencilKit
 import PDFKit
 
 enum Instrument: String, CaseIterable {
-    case pen, glowPen, marker, eraser, select, pan, capture, motion, laser, objects, writingTarget
+    case pen, duet, glowPen, marker, eraser, select, pan, capture, motion, laser, objects, writingTarget
 
-    var editsInk: Bool { [.pen, .glowPen, .marker, .eraser, .select].contains(self) }
+    var editsInk: Bool { [.pen, .duet, .glowPen, .marker, .eraser, .select].contains(self) }
 
     var symbol: String {
         switch self {
+        case .duet: "person.2.fill"
         case .pen: "pencil.tip"
         case .glowPen: "sparkles"
         case .marker: "highlighter"
@@ -24,9 +25,10 @@ enum Instrument: String, CaseIterable {
     }
 
     func configureInk(_ ink: PKCanvasView, color: UIColor, width: CGFloat) {
+        (ink as? CloudInkCanvas)?.configureDuet(self == .duet,width:width)
         (ink as? CloudInkCanvas)?.configureCloud(self == .glowPen ? color : nil, width: width)
         switch self {
-        case .pen: ink.tool = PKInkingTool(.pen, color: color, width: max(0.5, width))
+        case .pen,.duet: ink.tool = PKInkingTool(.pen, color: color, width: max(0.5, width))
         case .glowPen: ink.tool = PKInkingTool(.pen, color: GlowInk.color(color), width: max(0.9, width))
         case .marker: ink.tool = PKInkingTool(.marker, color: color.withAlphaComponent(0.43), width: max(1, width * 4))
         case .eraser: ink.tool = PKEraserTool(.vector)

@@ -12,13 +12,19 @@ export function owner(token) {
 export const html = s => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const page = (title,content) => new Response('<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width, initial-scale=1"><title>'+html(title)+'</title><style>body{font:18px system-ui;color:#19273c;max-width:36rem;margin:12vh auto;padding:1.5rem}label{display:block;margin:1.3rem 0}input,button,select{font:inherit;padding:.6rem;max-width:100%}button{background:#263968;color:white;border:0;border-radius:.4rem}</style><h1>'+html(title)+'</h1>'+content,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'"}});
 export function origin() { return new URL(process.env.PUBLIC_URL || 'http://127.0.0.1:8080').origin; }
+const clientNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',grok:'Grok'};
 function redirects(client) {
+  if(client==='gemini'||client==='grok'){
+    const uri=process.env[client.toUpperCase()+'_REDIRECT_URI'];
+    if(!uri)return [];
+    try{const u=new URL(uri);return u.protocol==='https:'&&!u.username&&!u.password&&!u.hash?[uri]:[];}catch{return [];}
+  }
   if (client==='claude') return ['https://claude.ai/api/mcp/auth_callback','https://claude.com/api/mcp/auth_callback'];
   if (client==='chatgpt') return ['https://chatgpt.com/connector_platform_oauth_redirect',process.env.CHATGPT_REDIRECT_URI].filter(Boolean);
   return [];
 }
 function registered(client){
-  if(['chatgpt','claude'].includes(client))return {family:client,uris:redirects(client)};
+  if(Object.hasOwn(clientNames,client))return {family:client,uris:redirects(client)};
   if(typeof client!=='string'||client.length>3000||!process.env.OWNER_TOKEN)return null;
   const [payload,signature]=client.split('.');
   if(!payload||!signature)return null;
@@ -30,7 +36,7 @@ export function clientLabel(client){return registered(client)?.family||client;}
 export function register(metadata){
   const uris=metadata.redirect_uris;
   requireThat(Array.isArray(uris)&&uris.length>0&&uris.length<=4,'Registered callbacks required');
-  const family=['chatgpt','claude'].find(client=>uris.every(uri=>typeof uri==='string'&&(redirects(client).includes(uri)||(client==='chatgpt'&&/^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]{1,160}$/.test(uri)))));
+  const family=Object.keys(clientNames).find(client=>uris.every(uri=>typeof uri==='string'&&(redirects(client).includes(uri)||(client==='chatgpt'&&/^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]{1,160}$/.test(uri)))));
   requireThat(family&&(!metadata.token_endpoint_auth_method||metadata.token_endpoint_auth_method==='none'),'Public PKCE client with a supported callback required');
   requireThat(process.env.OWNER_TOKEN?.length>=32,'Workspace credential required',503);
   const details={family,uris,nonce:randomUUID()},payload=Buffer.from(JSON.stringify(details)).toString('base64url');
@@ -89,10 +95,10 @@ export async function oauth(req,path,c) {
 export async function actor(req,c) {
   const token=(req.headers.get('authorization')||'').replace(/^Bearer /i,'');
   if(owner(token)) return {name:'Human',owner:true};
-  if(c.hosted){const a=await hostedState('actor',{hash:digest(token)});if(a.client){a.name=clientLabel(a.client)==='chatgpt'?'ChatGPT':'Claude';delete a.client;}return a;}
+  if(c.hosted){const a=await hostedState('actor',{hash:digest(token)});if(a.client){a.name=clientNames[clientLabel(a.client)]||'Agent';delete a.client;}return a;}
   const g=await one(c,'SELECT id,client,project FROM grants WHERE access_hash=$1 AND NOT revoked AND expires>now()',[digest(token)]);
   requireThat(g,'Connect your workspace',401);
   if(g.client==='ipad')return {name:'iPad',device:true,project:g.project,grant:g.id};
-  return {name:clientLabel(g.client)==='chatgpt'?'ChatGPT':'Claude', project:g.project,grant:g.id};
+  return {name:clientNames[clientLabel(g.client)]||'Agent', project:g.project,grant:g.id};
 }
 export function scope(who,id) { requireThat(who.owner||who.project===id,'Project is outside this connection',403); }

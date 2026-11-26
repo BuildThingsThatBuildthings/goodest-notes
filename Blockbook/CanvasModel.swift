@@ -47,6 +47,7 @@ struct CanvasItem: Identifiable, Codable, Equatable {
     var frame: CGRect
     var tint: CanvasTint = .indigo
     var glow: Bool?
+    var agentAuthor: String?
     var audioNote: CanvasAsset?
     var inkAnchor: InkContextAnchor?
 

@@ -85,6 +85,7 @@ struct PaperEditor: View {
                     }
                 }
                 if instrument == .motion { Text(polishing ? "Lasso the handwriting to polish." : "Lasso the ink you want to bring to life.").font(.footnote) }
+                if instrument == .duet { Text("Draw together · Pencil uses the ink swatch · Finger uses coral").font(.footnote) }
                 if instrument == .capture { Text("Drag a box around the part you want to reuse.").font(.footnote).padding(6) }
                 if !teaching && instrument == .objects { itemBar(page: page) }
                 paperCanvas(paper: paper, page: page)
@@ -313,7 +314,7 @@ struct PaperEditor: View {
 
     private func writingToolbar(paper: Paper, page: SheetPage) -> some View {
         HStack(spacing: 3) {
-            ForEach(teaching ? [Instrument.laser,.pen,.glowPen,.marker,.eraser,.pan,.motion] : [.objects,.pen,.glowPen,.marker,.eraser,.select,.pan,.capture,.motion], id: \.self) { item in
+            ForEach(teaching ? [Instrument.laser,.pen,.duet,.glowPen,.marker,.eraser,.pan,.motion] : [.objects,.pen,.duet,.glowPen,.marker,.eraser,.select,.pan,.capture,.motion], id: \.self) { item in
                 Button {
                     polishing = false
                     instrument = item
@@ -362,6 +363,7 @@ struct PaperEditor: View {
         case .capture: "Draw a box to capture a block"
         case .objects: "Select or move objects"
         case .pan: "Pan canvas"
+        case .duet: "Draw together"
         case .glowPen: "Glow pen"
         default: tool.rawValue.capitalized
         }

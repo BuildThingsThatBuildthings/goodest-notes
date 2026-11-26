@@ -10,6 +10,14 @@ Tap **Open circuit lesson** on the writing desk. Play the teaching visual and wa
 
 Narrated MP4 export places captions beneath the action. It uses the system English voice, with an English Flite voice on the workspace server as a fallback. The circuit lesson includes its narration for offline teaching. Generated media is saved with the page and can replay offline.
 
+## Draw together and assign canvas edits
+
+Select the two-person **Draw together** tool on a page or whiteboard. Pencil uses the current ink color and a finger draws a separate coral stroke. Both previews can appear together. A finished finger stroke waits for an active Pencil gesture to finish before joining the editable drawing.
+
+In a shared project, open the page conversation, select **Canvas agents**, enter an assignment and choose **Edit canvas**. Select any combination of Claude, ChatGPT, Gemini 4 Neon and Grok 4.7. A project-only iPad can propose work for owner approval. The worker sends a reduced page image (or selected object's region) to the chosen providers. Each turn reads the previous edits and handoffs and adds an attributed editable object plus a public reply. The conversation and canvas refresh while the iPad is open. External project-scoped MCP clients can also add and revise objects using `add_canvas_object` and `edit_canvas_object`.
+
+Configure `GEMINI_API_KEY` and `XAI_API_KEY` only on the server. Google and xAI start with zero monthly spending authority. To authorize usage, the owner configures `GOOGLE_MONTHLY_USD` or `XAI_MONTHLY_USD` on the PostgreSQL API/worker host or on the Convex deployment for hosted accounting. These explicit additional limits are independent of the existing OpenAI and Anthropic limits. Use Agent settings to verify model access. A project grant and a compatible external client are needed for external chat integration. For an external Grok or Gemini OAuth client, configure its exact verified HTTPS callback in `GROK_REDIRECT_URI` or `GEMINI_REDIRECT_URI`.
+
 ## Writing with cloud ink
 
 Choose **Glow pen** for a bright tip and a drifting trail that fades as you write. The saved stroke keeps its halo. Tap the ink swatch for the system color picker, quick colors, and a continuous width slider. The glow pen has its own color. Reduce Motion turns off the drifting trail.

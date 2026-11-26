@@ -6,6 +6,22 @@ import XCTest
 @testable import Blockbook
 
 final class CanvasTests: XCTestCase {
+    @MainActor func testDuetAddsSecondWriterWithoutReplacingPencilInk() throws {
+        let canvas=CloudInkCanvas()
+        let pencil=inkStroke(at:CGPoint(x:10,y:20),color:.blue)
+        let finger=inkStroke(at:CGPoint(x:50,y:60),color:.red)
+        canvas.drawing=PKDrawing(strokes:[pencil])
+        Instrument.duet.configureInk(canvas,color:.blue,width:3)
+        XCTAssertEqual(canvas.drawingPolicy,.pencilOnly)
+        canvas.finishFinger(finger,preview:CAShapeLayer())
+        let saved=try PKDrawing(data:canvas.drawing.dataRepresentation())
+        XCTAssertEqual(saved.strokes.count,2)
+        XCTAssertEqual(saved.strokes.first?.path.first?.location,pencil.path.first?.location)
+        XCTAssertEqual(saved.strokes.last?.path.first?.location,finger.path.first?.location)
+        Instrument.pen.configureInk(canvas,color:.blue,width:3)
+        XCTAssertEqual(canvas.drawingPolicy,.anyInput)
+    }
+
     func testPolishingKeepsOriginalInkAndStrokeEndpoints() throws {
         let points = [CGPoint(x:0,y:0),CGPoint(x:5,y:2),CGPoint(x:10,y:0)].enumerated().map { i, p in
             PKStrokePoint(location:p,timeOffset:Double(i)/60,size:CGSize(width:2,height:2),

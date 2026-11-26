@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS spend (id uuid PRIMARY KEY, month text NOT NULL, prov
 CREATE INDEX IF NOT EXISTS spend_month ON spend(month,provider);
 
 CREATE TABLE IF NOT EXISTS visuals(id uuid PRIMARY KEY, signature text NOT NULL, reservation uuid REFERENCES spend, result jsonb);
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS snapshot jsonb;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS target text;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS base int;
 CREATE TABLE IF NOT EXISTS chunks(hash text PRIMARY KEY, bytes bytea NOT NULL);
