@@ -1,5 +1,5 @@
-import {createHash} from 'node:crypto';
-import {actor,scope,oauth,origin} from './auth.mjs';
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
+import {actor,scope,oauth,origin,digest,register,clientLabel} from './auth.mjs';
 import {transaction,one,many,uuid,string,requireThat} from './db.mjs';
 import {action,accounts} from './workspace.mjs';
 import {models} from './models.mjs';
@@ -55,6 +55,7 @@ const storage=run=>hosted()?run({hosted:true}):transaction(run);
 export async function handle(req) {
   const path=new URL(req.url).pathname;
   try{
+    if(path==='/register' && req.method==='POST')return json(register(await body(req)),201);
     if(path==='/health'){
       try{await (hosted()?state('health'):transaction(c=>one(c,'SELECT id FROM settings WHERE id=1')));return json({service:'Goodest Notes',version:'0.3.0',database:'connected'});}
       catch{return json({service:'Goodest Notes',version:'0.3.0',database:'unavailable'},503);}
@@ -71,10 +72,25 @@ export async function handle(req) {
     }
     if(path==='/v1/visual') { const a=await storage(c=>actor(req,c));requireThat(a.owner,'Owner required',403);const {visual}=await import('./visual.mjs');return json(await visual(await body(req))); }
     return await storage(async c=>{
-      if(path==='/authorize'||path==='/token'){const result=await oauth(req,path,c);return result instanceof Response?result:json(result);}
+      if(path==='/authorize'||path==='/token'||path==='/revoke'){const result=await oauth(req,path,c);return result instanceof Response?result:json(result);}
       const who=await actor(req,c);
+      if(who.device){
+        if(path==='/v1/settings'&&req.method==='GET')return json({role:'device',project:who.project,models:[],accounts:[],providers:{}});
+        if(path==='/v1/projects'&&req.method==='GET')return json(await projects(c,who));
+        if(path==='/v1/action'&&req.method==='POST'){
+          const d=await body(req);requireThat(['read_space','read_asset','read_conversation','post_message','edit_note'].includes(d.op),'A workspace owner must approve this action',403);return json(await action(c,who,d.op,d.args));
+        }
+        throw Object.assign(new Error('Project-scoped device credential'),{status:403});
+      }
       if(path==='/mcp')return mcp(req,c,who);
       requireThat(who.owner,'Owner access required',403);
+      if(path==='/v1/device'&&req.method==='POST'){
+        const d=await body(req),project=uuid(d.project),deviceToken=randomBytes(36).toString('base64url'),hash=digest(deviceToken);
+        if(c.hosted)await state('device',{project,hash});
+        else{requireThat(await one(c,'SELECT id FROM projects WHERE id=$1',[project]),'Unknown project',404);
+          await c.query("INSERT INTO grants VALUES ($1,$2,$3,'ipad',$4,now()+interval '30 days',now(),false)",[randomUUID(),hash,digest(randomBytes(36)),project]);}
+        return json({endpoint:origin(),project,deviceToken});
+      }
       if(path==='/v1/chunks' && req.method==='POST'){
         const d=await body(req);
         if(Array.isArray(d.check)){
@@ -106,7 +122,7 @@ export async function handle(req) {
         return json({main:(await one(c,'SELECT main FROM settings WHERE id=1')).main,models:Object.keys(models),accounts:await accounts(c),providers:{openai:Boolean(token('openai')),anthropic:Boolean(token('anthropic'))}});
       }
       if(path==='/v1/rules' && req.method==='POST'){const d=await body(req);if(c.hosted)return json(await state('rules',d));requireThat(typeof d.rules==='string'&&d.rules.length<=8000,'Invalid rules');return json(await one(c,'UPDATE projects SET rules=$1 WHERE id=$2 RETURNING *',[d.rules,uuid(d.project)]));}
-      if(path==='/v1/grants'){if(c.hosted)return json(await state('grants',req.method==='POST'?await body(req):{}));if(req.method==='POST'){const d=await body(req);await c.query('UPDATE grants SET revoked=true WHERE id=$1',[uuid(d.id)]);}return json(await many(c,'SELECT id,client,project,revoked FROM grants ORDER BY client'));}
+      if(path==='/v1/grants'){if(c.hosted)return json((await state('grants',req.method==='POST'?await body(req):{})).map(g=>({...g,client:clientLabel(g.client)})));if(req.method==='POST'){const d=await body(req);await c.query('UPDATE grants SET revoked=true WHERE id=$1',[uuid(d.id)]);}return json((await many(c,'SELECT id,client,project,revoked FROM grants ORDER BY client')).map(g=>({...g,client:clientLabel(g.client)})));}
       throw Object.assign(new Error('Unknown route'),{status:404});
     });
   }catch(e){return json({error:e.status?e.message:'Workspace service unavailable'},e.status||503,e.status===401?{'WWW-Authenticate':'Bearer resource_metadata="'+origin()+'/.well-known/oauth-protected-resource"'}:{});}

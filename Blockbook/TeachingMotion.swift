@@ -36,9 +36,14 @@ struct SketchSelection: Identifiable {
         background=SheetRenderer.image(rect:area) { ctx in
             SheetRenderer.background(ctx,page:page,kind:paper.kind,pdf:pdf)
             SheetRenderer.paintItems(studio,page:page,in:area,context:ctx)
-            if rest.bounds.intersects(area) { rest.image(from:area,scale:min(2,512/max(area.width,area.height))).draw(in:area) }
+            if rest.bounds.intersects(area) { lightInk(rest,rect:area,scale:min(2,512/max(area.width,area.height))).draw(in:area) }
         }
     }
+}
+private func lightInk(_ drawing:PKDrawing,rect:CGRect,scale:CGFloat)->UIImage {
+    var image:UIImage!
+    UITraitCollection(userInterfaceStyle:.light).performAsCurrent {image=drawing.image(from:rect,scale:scale)}
+    return image
 }
 enum StrokeMotion: String, CaseIterable { case hinge = "Rotate on hinge", travel = "Move along path" }
 struct SketchScene {
@@ -58,9 +63,9 @@ struct SketchScene {
         let target=CGRect(origin:.zero,size:size)
         stationary=UIGraphicsImageRenderer(size:target.size,format:format).image { _ in
             source.background.draw(in:target)
-            if !still.isEmpty { PKDrawing(strokes:still).image(from:rect,scale:scale).draw(in:target) }
+            if !still.isEmpty { lightInk(PKDrawing(strokes:still),rect:rect,scale:scale).draw(in:target) }
         }
-        moving=PKDrawing(strokes:active).image(from:rect,scale:scale)
+        moving=lightInk(PKDrawing(strokes:active),rect:rect,scale:scale)
         let first=active.first
         let anchor=(pivotAtEnd ? first?.path.last : first?.path.first).map { $0.location.applying(first!.transform) } ?? CGPoint(x:rect.midX,y:rect.midY)
         pivot=CGPoint(x:(anchor.x-rect.minX)*target.width/rect.width,y:(anchor.y-rect.minY)*target.height/rect.height)

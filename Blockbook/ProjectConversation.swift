@@ -33,6 +33,7 @@ struct AgentSettings: View {
             if let projects=try await WorkspaceConnection.request("/v1/projects") as? [[String:Any]] {
                 remoteProjects=projects.compactMap { row in guard let raw=row["id"] as? String,let id=UUID(uuidString:raw),let name=row["title"] as? String else {return nil};return Project(id:id,title:name) }
             }
+            if data["role"] as? String=="device" {info="Connected to one project. Enter the owner key to manage the full workspace.";return}
             info = selected == nil ? "Workspace connected" : "Main agent updated for future assignments."
         } catch { info = error.localizedDescription }
     }
@@ -159,7 +160,7 @@ struct ProjectConversation: View {
                 }
                 if reply != nil { Button("Cancel reply") { reply=nil }.font(.caption) }
                 TextField("Message or assignment",text:$draft,axis:.vertical).textFieldStyle(.roundedBorder)
-                HStack { Button("Post") { send("post_message") }; Button("Assign to team") { send("assign_task") } }.disabled(saving || draft.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
+                HStack { Button("Post") { send("post_message") }; if WorkspaceConnection.deviceProject == nil {Button("Assign to team") { send("assign_task") }} }.disabled(saving || draft.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
             } else {
                 Text("Share this project's page text, drawings, and attachments with your private workspace. You can then grant each chat access to the project.").font(.subheadline)
                 Button("Share project") { Task { do { try await workspace.share(project,studio:studio); try await refresh(); status="" } catch { status=error.localizedDescription } } }.buttonStyle(.borderedProminent)

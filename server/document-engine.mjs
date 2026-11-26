@@ -114,7 +114,16 @@ export async function execute(db,cmd,a){
     Object.assign(grant,{access:a.access,refresh:a.next,expires:Date.now()+3600000});
     await db.put('grant',grant.id,'',grant);await db.put('access',a.access,'',grant.id);await db.put('refresh',a.next,'',grant.id);return true;
   }
-  if(cmd==='actor'){const i=await db.get('access',a.hash),g=i&&await db.get('grant',i);check(g&&!g.revoked&&g.expires>Date.now(),'Connect your workspace',401);return {grant:g.id,project:g.project,name:g.client==='claude'?'Claude':'ChatGPT'};}
+  if(cmd==='device'){
+    const project=identifier(a.project);check(await db.get('project',project),'Unknown project',404);
+    const id=uid(),g={id,access:a.hash,client:'ipad',project,revoked:false,expires:Date.now()+30*86400000};
+    await db.put('grant',id,'',g);await db.put('access',a.hash,'',id);return {id};
+  }
+  if(cmd==='revokeToken'){
+    const id=await db.get('access',a.hash)||await db.get('refresh',a.hash),g=id&&await db.get('grant',id);
+    if(g&&g.client===a.client)await db.put('grant',id,'',{...g,revoked:true});return true;
+  }
+  if(cmd==='actor'){const i=await db.get('access',a.hash),g=i&&await db.get('grant',i);check(g&&!g.revoked&&g.expires>Date.now(),'Connect your workspace',401);if(g.client==='ipad')return {name:'iPad',device:true,project:g.project,grant:g.id};return {grant:g.id,project:g.project,client:g.client,name:g.client==='claude'?'Claude':'ChatGPT'};}
   if(cmd==='grants'){if(a.id){const g=await db.get('grant',identifier(a.id));check(g,'Unknown connection',404);await db.put('grant',g.id,'',{...g,revoked:true});}
     return (await db.list('grant','','',400)).map(({id,client,project,revoked})=>({id,client,project,revoked}));}
   if(cmd==='reserve')return reserve(db,a.provider,a.maximum);

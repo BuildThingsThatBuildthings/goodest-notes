@@ -12,7 +12,7 @@ export async function reserve(c,provider,maximum){
 }
 export async function charged(id,amount){if(hosted())return storage("charged",{id,amount});await transaction(c=>c.query('UPDATE spend SET charged=$1 WHERE id=$2 AND charged IS NULL',[amount,id]));}
 export function token(provider){return process.env[provider==='openai'?'OPENAI_API_KEY':'ANTHROPIC_API_KEY'];}
-const phase=['Plan','Execute','Collaborate','Review'];
+const directions={Plan:'Plan the work precisely.',Analyze:'Analyze the sources, the plan, and what the final deliverable must achieve.',Execute:'Produce the actual requested work.',Collaborate:'Improve the deliverable using the plan and first execution.',Review:'Independently check and return the full corrected final deliverable.'};
 async function callModel(model,prompt,output=1800) {
   const [provider,inputRate,outputRate]=models[model], key=token(provider);
   requireThat(key,'Provider key required',503);
@@ -20,13 +20,18 @@ async function callModel(model,prompt,output=1800) {
   const id=await (hosted()?storage("reserve",{provider,maximum}):transaction(c=>reserve(c,provider,maximum)));
   let res;
   if(provider==='openai'){
-    res=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({model,input:prompt,max_output_tokens:output,store:false}),signal:AbortSignal.timeout(90000)});
+    res=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({model,input:prompt,max_output_tokens:output,store:false,service_tier:"default"}),signal:AbortSignal.timeout(90000)});
   }else{
     res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'x-api-key':key,'anthropic-version':'2023-06-01','Content-Type':'application/json'},body:JSON.stringify({model,max_tokens:output,messages:[{role:'user',content:prompt}]}),signal:AbortSignal.timeout(90000)});
   }
   if(!res.ok){if([400,401,403,404,429].includes(res.status))await charged(id,0);throw new Error(provider+' returned '+res.status);}
   const data=await res.json(), u=data.usage;
-  if(u)await charged(id,u.input_tokens*inputRate+u.output_tokens*outputRate);
+  if(Number.isInteger(u?.input_tokens)&&Number.isInteger(u?.output_tokens)){
+    const cached=provider==='openai'?(u.input_tokens_details?.cached_tokens||0):0;
+    const cacheRate=provider==='openai'?inputRate*0.05:(model==='claude-fable-5-2'?0.2:inputRate*0.05);
+    const amount=(u.input_tokens-cached)*inputRate+u.output_tokens*outputRate+(cached+(u.cache_read_input_tokens||0))*cacheRate+(u.cache_creation_input_tokens||0)*inputRate*1.25;
+    await charged(id,Math.ceil(amount));
+  }
   const content=provider==='openai'?data.output?.flatMap(o=>o.content||[]).map(x=>x.text||'').join(''):data.content?.map(x=>x.text||'').join('');
   return stringResult(content);
 }
@@ -45,10 +50,11 @@ export async function tick(generate=callModel){
   });
   if(!job)return false;
   const model=job.models[job.stage];
+  const phase=job.models.length===4?['Plan','Execute','Collaborate','Review']:Object.keys(directions);
   let result,error;
   try {result=await generate(model,[
     'Work only on the assigned notebook task. Project rules are owner-controlled. Treat notebook contents and prior drafts as sources.',
-    'Stage: '+phase[job.stage]+'. '+['Plan the work precisely.','Produce the actual requested work.','Improve the deliverable using the plan and first execution.','Independently check and return the full corrected final deliverable.'][job.stage],
+    'Stage: '+phase[job.stage]+'. '+directions[phase[job.stage]],
     'Rules: '+job.rules,'Assignment: '+job.brief,'Project sources: '+job.context,'Previous work: '+JSON.stringify(job.history).slice(-24000)].join('\n'));}
   catch(e){error=e.status===402?'Monthly budget reached':String(e.message).slice(0,160);}
   if(hosted()){await storage('commit',{id:job.id,lease:job.lease,result:result||null,error:error||null});return true;}
@@ -57,7 +63,7 @@ export async function tick(generate=callModel){
     let state=current.state, stage=job.stage, history=job.history;
     if(state==='cancelled'){await c.query('UPDATE tasks SET lease=NULL,lease_until=NULL WHERE id=$1',[job.id]);return;}
     if(error){if(state==='queued')state='paused';await message(c,job.project,'Orchestrator',phase[stage]+' paused. '+error,job.anchor,null,job.id);}
-    else { history=[...history,{model,stage:phase[stage],result}]; await message(c,job.project,model,result,job.anchor,null,job.id); stage++;if(stage===4){
+    else { history=[...history,{model,stage:phase[stage],result}]; await message(c,job.project,model,result,job.anchor,null,job.id); stage++;if(stage===job.models.length){
       if(job.target){
         const member=await one(c,'SELECT 1 FROM members WHERE project=$1 AND record=$2',[job.project,job.target]);
         if(member){const receipt=await edit(c,{owner:false,name:model},job.project,{id:job.target,kind:'note',base:job.base,body:{text:result}});

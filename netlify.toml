@@ -4,3 +4,4 @@
 [functions]
   node_bundler = "esbuild"
   external_node_modules = ["@echogarden/flite-wasi"]
+  included_files = ["node_modules/@echogarden/flite-wasi/flite.wasm"]

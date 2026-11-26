@@ -3,10 +3,22 @@ import UniformTypeIdentifiers
 import NaturalLanguage
 
 @main struct BlockbookApp: App {
-    @StateObject var studio = Studio()
+    @StateObject var studio: Studio
+    init() {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--classroom-ui-test") {
+            _studio=StateObject(wrappedValue:Studio(folder:URL.applicationSupportDirectory.appendingPathComponent("ClassroomTest")));return
+        }
+        #endif
+        _studio=StateObject(wrappedValue:Studio())
+    }
     @StateObject var shared = SharedWorkspace()
     var body: some Scene {
-        WindowGroup { Workspace().environmentObject(studio).environmentObject(shared).tint(.indigo).task { do {try WorkspaceConnection.importDeviceConfiguration()} catch {studio.issue=error.localizedDescription};studio.indexScannedPages() } }
+        WindowGroup { Workspace().environmentObject(studio).environmentObject(shared).tint(.indigo).task {
+            do {if !ProcessInfo.processInfo.arguments.contains("--classroom-ui-test") {try await WorkspaceConnection.importScopedDevice();if let project=WorkspaceConnection.deviceProject,!studio.library.allProjects.contains(where:{$0.id==project}) {try await shared.restore(project,studio:studio)}}}
+            catch {studio.issue=error.localizedDescription}
+            studio.indexScannedPages()
+        } }
     }
 }
 
@@ -27,6 +39,8 @@ struct Workspace: View {
 
     @EnvironmentObject var studio: Studio
     @State private var destination: Destination? = .desk
+    @State private var restoredDestination=false
+    private var destinationKey:String { "lastItem."+studio.folder.lastPathComponent }
     @State private var visibility = NavigationSplitViewVisibility.all
     @State private var nameType: NewItem?
     @State private var name = ""
@@ -126,7 +140,22 @@ struct Workspace: View {
                 }
             }
         }
-        .onChange(of: destination) { _, _ in
+        .onAppear {
+            guard !restoredDestination else{return}
+            restoredDestination=true
+            if let raw=UserDefaults.standard.string(forKey:destinationKey),let url=URL(string:raw),
+               let ref=LibraryReference(url:url),studio.library.title(for:ref) != nil { _=follow(url) }
+            else if let raw=UserDefaults.standard.string(forKey:destinationKey),let url=URL(string:raw),url.host=="project",let id=UUID(uuidString:url.lastPathComponent),studio.library.allProjects.contains(where:{$0.id==id}) { destination = .project(id) }
+        }
+        .onChange(of: destination) { _, next in
+            switch next {
+            case .paper(let id,_): UserDefaults.standard.set(LibraryReference(.paper,id).link,forKey:destinationKey)
+            case .workflow(let id): UserDefaults.standard.set(LibraryReference(.workflow,id).link,forKey:destinationKey)
+            case .block(let id): UserDefaults.standard.set(LibraryReference(.block,id).link,forKey:destinationKey)
+            case .project(let id): UserDefaults.standard.set("goodestnotes://project/"+id.uuidString,forKey:destinationKey)
+            default:UserDefaults.standard.removeObject(forKey:destinationKey)
+            }
+
             if !query.isEmpty { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
         }
         .onChange(of: scenePhase) { _, phase in if phase == .background { _ = studio.flushWrites(); agent.stop() } }

@@ -55,7 +55,14 @@ struct PaperEditor: View {
                 Divider()
                 writingToolbar(paper: paper, page: page)
                 if let visual=page.visual {
-                    Button(playing==visual.id ? "Turn motion off" : "Play teaching visual",systemImage:playing==visual.id ? "pause.circle" : "play.circle") { playing = playing==visual.id ? nil : visual.id }.font(.footnote)
+                    HStack {
+                    if page.teachingVisuals.count>1 {
+                        Menu("Saved visuals") {ForEach(page.teachingVisuals) { asset in
+                            Button((asset.caption.isEmpty ? "Drawing" : asset.caption)+" · "+(asset.filename as NSString).pathExtension.uppercased()) {playing=asset.id}
+                        }}
+                    }
+                    Button(playing != nil ? "Turn motion off" : "Play teaching visual",systemImage:playing != nil ? "pause.circle" : "play.circle") { playing = playing != nil ? nil : visual.id }.font(.footnote)
+                    }
                 }
                 if instrument == .motion { Text("Lasso the ink you want to bring to life.").font(.footnote) }
                 if instrument == .capture { Text("Drag a box around the part you want to reuse.").font(.footnote).padding(6) }
@@ -80,7 +87,7 @@ struct PaperEditor: View {
             }
             .task(id: page.id) { if FileManager.default.fileExists(atPath: studio.url(page.id,"drawing").path) { studio.scheduleIndex(paperID: paperID, pageID: page.id) } }
             .sheet(item:$sketch) { source in SketchStudio(source:source,folder:studio.assetFolder) { result in
-                if studio.editPage(paperID,page.id,{ $0.visual=result }) { playing=result.id; instrument = .pen }
+                if studio.editPage(paperID,page.id,{ sheet in var list=sheet.teachingVisuals;list.append(result);sheet.savedVisuals=list;sheet.visual=result }) { playing=result.id; instrument = .pen }
             } }
             .sheet(item: $draft) { BlockEditor($0) }
             .sheet(item: $panel) { item in
@@ -239,7 +246,7 @@ struct PaperEditor: View {
             openContext: { showContext($0, mode: $1, at: $2, page: page) },
             selectItem: { select($0, paper: paper, page: page) },
             moveItem: { move($0, to: $1, page: page) },
-            visual: playing == page.visual?.id ? page.visual:nil,
+            visual: page.teachingVisuals.first(where:{$0.id==playing}),
             lasso: { polygon in
                 do { sketch = try SketchSelection(polygon:polygon,studio:studio,paper:paper,page:page)
                     if sketch == nil { studio.issue="Draw around the ink strokes you want to animate." }

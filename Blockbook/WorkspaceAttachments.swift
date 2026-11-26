@@ -17,7 +17,7 @@ struct WorkspaceFile {
                 let ink=page.id.uuidString+".drawing"
                 if FileManager.default.fileExists(atPath:folder.appendingPathComponent(ink).path) {paths.insert(ink)}
                 for asset in page.canvas?.items.flatMap(\.ownedAssets) ?? [] { paths.insert("Assets/"+asset.storageName) }
-                if let visual=page.visual { paths.insert("Assets/"+visual.filename) }
+                for visual in page.teachingVisuals { paths.insert("Assets/"+visual.filename) }
             }
         }
         return paths

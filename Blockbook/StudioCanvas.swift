@@ -47,7 +47,7 @@ extension Studio {
             for i in next.blocks.indices where next.blocks[i].source?.pageID == pageID { next.blocks[i].source = nil }
         }) else { return false }
         cancelIndex(pageID)
-        removeFiles([url(pageID, "drawing")] + (page.canvas?.items.flatMap(\.ownedAssets).map(assetURL) ?? []))
+        removeFiles(page.teachingVisuals.map { assetFolder.appendingPathComponent($0.filename) } + [url(pageID, "drawing")] + (page.canvas?.items.flatMap(\.ownedAssets).map(assetURL) ?? []))
         return true
     }
 
@@ -73,7 +73,7 @@ extension Studio {
         if let deleted {
             for page in deleted.pages {
                 cancelIndex(page.id)
-                removeFiles([url(page.id, "drawing")] + (page.canvas?.items.flatMap(\.ownedAssets).map(assetURL) ?? []))
+                removeFiles(page.teachingVisuals.map { assetFolder.appendingPathComponent($0.filename) } + [url(page.id, "drawing")] + (page.canvas?.items.flatMap(\.ownedAssets).map(assetURL) ?? []))
             }
             if deleted.kind == .pdf { evictPDF(deleted.id); removeFiles([url(deleted.id, "pdf")]) }
         }

@@ -21,11 +21,12 @@
 		2A8EE1027412EEE50EB1F9B9 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 02EE0662F545D6D5C2547FC3 /* Assets.xcassets */; };
 		2B0A9910E8411BEDDB43184E /* DraftText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8B3852A30F19BEEE6ED7DC /* DraftText.swift */; };
 		366387E65CDC4BCAEDAF20F7 /* BlockbookTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E115AFEBD5CE8ACFDAE00F59 /* BlockbookTests.swift */; };
-		387D636DCE9DAF336231A854 /* circuit-16.wav in Resources */ = {isa = PBXBuildFile; fileRef = BF61D5CE8C775477867A6FC9 /* circuit-16.wav */; };
 		3D184287B921AF6033BF42BD /* CanvasOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4456635E9298213253386411 /* CanvasOverlay.swift */; };
+		52FA538DE8F3AC729F6B025C /* ClassroomRenderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 843E1B5DEB109F668CC7D585 /* ClassroomRenderingTests.swift */; };
 		5698636C5E8156EBD1F50500 /* TeachingMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B71DB769D39158B5B89E82E /* TeachingMotion.swift */; };
 		57C4B7B93780F19116FAE06E /* AgentConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6413548048A9C08DC48527F0 /* AgentConnection.swift */; };
 		5ABC95B667F24FC1BF488906 /* SharedWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E854123109FACDB6B52C96B /* SharedWorkspace.swift */; };
+		61BC192E90B478150800FC3A /* ClassroomTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 572BCB06E1C7684D32AD98A2 /* ClassroomTests.swift */; };
 		63CCBC7D767988EB22CF5D9C /* PaperEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A3115F36DBF61921CD0359 /* PaperEditor.swift */; };
 		64DE28B3516A909E0788B4B9 /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = B93ED259FDAC43FF5C8E2B88 /* Library.swift */; };
 		6C7C3BCF64A539172371B106 /* AgentWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23ED35013EB61ABF596581A9 /* AgentWire.swift */; };
@@ -35,9 +36,11 @@
 		8F81A01329DD304898B9B218 /* LibraryWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF7BBFD7A68EB44EE6931BA8 /* LibraryWriter.swift */; };
 		92D2D5DFF0A6B0F5C573FC8B /* CanvasEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 150611596906F7676C0DC6B8 /* CanvasEditor.swift */; };
 		9979476EFD517A6792A1024D /* AgentTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6415EDDB9EF0EA7B7F2B7A58 /* AgentTools.swift */; };
-		9BDF454B5032F594F812E678 /* circuit-8.wav in Resources */ = {isa = PBXBuildFile; fileRef = 5514D8E3F00BA56AC90701FE /* circuit-8.wav */; };
+		9AA1612EBFCE779BC0D427E6 /* circuit-2.wav in Resources */ = {isa = PBXBuildFile; fileRef = 0EB5F5D3E040FD0C08E45271 /* circuit-2.wav */; };
+		A4CB4BEE3598B6A8FDEE2D25 /* circuit-1.wav in Resources */ = {isa = PBXBuildFile; fileRef = 6A93780DACCC4AA6070DECC8 /* circuit-1.wav */; };
 		AB434427ADE1DD4A298DD4CF /* AgentCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD4182CFA37C682239C0A0B7 /* AgentCatalog.swift */; };
 		AE82CEAB17A914AAA260E774 /* BoardSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B51410BBF8A74B6FA3F1247 /* BoardSurface.swift */; };
+		B7381FDAD25D872C73701BC3 /* circuit-3.wav in Resources */ = {isa = PBXBuildFile; fileRef = 783FE70651C818AED16F1C29 /* circuit-3.wav */; };
 		BAB97C208DF3E459E6C85A75 /* CanvasModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDD7FB58F5C8C891084ABEFC /* CanvasModel.swift */; };
 		BD86B20A43E569C41C79C522 /* ProjectsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5ACB8F980824844FAC7855B /* ProjectsView.swift */; };
 		C4C69E8BAE57973F3DDEA198 /* TeachingMotionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ACE978D34C2760BD58292D9 /* TeachingMotionTests.swift */; };
@@ -50,6 +53,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		0972185EB074CD9ED10D6E45 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 998CF7F7511E517373E9C9CC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8478EF728465BDC8F474D7F8;
+			remoteInfo = Blockbook;
+		};
 		99261E64D58CD23876A0A807 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 998CF7F7511E517373E9C9CC /* Project object */;
@@ -62,6 +72,7 @@
 /* Begin PBXFileReference section */
 		02EE0662F545D6D5C2547FC3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		0B51410BBF8A74B6FA3F1247 /* BoardSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoardSurface.swift; sourceTree = "<group>"; };
+		0EB5F5D3E040FD0C08E45271 /* circuit-2.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "circuit-2.wav"; sourceTree = "<group>"; };
 		150611596906F7676C0DC6B8 /* CanvasEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasEditor.swift; sourceTree = "<group>"; };
 		1A692228F58D1A8FC02EFF9E /* DrawingSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DrawingSurface.swift; sourceTree = "<group>"; };
 		1B71DB769D39158B5B89E82E /* TeachingMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeachingMotion.swift; sourceTree = "<group>"; };
@@ -76,12 +87,15 @@
 		4E854123109FACDB6B52C96B /* SharedWorkspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedWorkspace.swift; sourceTree = "<group>"; };
 		510845276DEFA9313C5BCCC1 /* StudioCanvas.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudioCanvas.swift; sourceTree = "<group>"; };
 		5404C7C4BC857212B267D8CA /* SheetRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SheetRenderer.swift; sourceTree = "<group>"; };
-		5514D8E3F00BA56AC90701FE /* circuit-8.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "circuit-8.wav"; sourceTree = "<group>"; };
+		572BCB06E1C7684D32AD98A2 /* ClassroomTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomTests.swift; sourceTree = "<group>"; };
 		6413548048A9C08DC48527F0 /* AgentConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentConnection.swift; sourceTree = "<group>"; };
 		6415EDDB9EF0EA7B7F2B7A58 /* AgentTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentTools.swift; sourceTree = "<group>"; };
+		6A93780DACCC4AA6070DECC8 /* circuit-1.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "circuit-1.wav"; sourceTree = "<group>"; };
 		6CC5BE037CAA8B27A97D2B2B /* CircuitLesson.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircuitLesson.swift; sourceTree = "<group>"; };
 		6F5DE415C2F5B10629635A74 /* WorkspaceAttachments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceAttachments.swift; sourceTree = "<group>"; };
+		783FE70651C818AED16F1C29 /* circuit-3.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "circuit-3.wav"; sourceTree = "<group>"; };
 		7F3EBF4333E829CA9BBB8749 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		843E1B5DEB109F668CC7D585 /* ClassroomRenderingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassroomRenderingTests.swift; sourceTree = "<group>"; };
 		88B1F43EC51379CDC1DD313E /* circuit-0.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "circuit-0.wav"; sourceTree = "<group>"; };
 		8D8B3852A30F19BEEE6ED7DC /* DraftText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DraftText.swift; sourceTree = "<group>"; };
 		926BD9AA64B28ECDF124F0F3 /* Studio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Studio.swift; sourceTree = "<group>"; };
@@ -91,7 +105,6 @@
 		B9C68410BF07F639877F9F48 /* BlockbookApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockbookApp.swift; sourceTree = "<group>"; };
 		BDA5ED71277E191272170F8A /* BlockbookTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = BlockbookTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BDD2946139B1F6C5F163541D /* NarratedSketch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NarratedSketch.swift; sourceTree = "<group>"; };
-		BF61D5CE8C775477867A6FC9 /* circuit-16.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "circuit-16.wav"; sourceTree = "<group>"; };
 		BFCD5FC2D5D1BFD03310F1BE /* Conversion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conversion.swift; sourceTree = "<group>"; };
 		C5ACB8F980824844FAC7855B /* ProjectsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectsView.swift; sourceTree = "<group>"; };
 		CC6CB6473F35A0497A64E166 /* CanvasTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CanvasTests.swift; sourceTree = "<group>"; };
@@ -103,6 +116,7 @@
 		E542D4BBE5E904B0A15CFBF4 /* AgentAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentAccess.swift; sourceTree = "<group>"; };
 		EB649A2A562EF800C5E38F9B /* WorkspaceMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceMarkdown.swift; sourceTree = "<group>"; };
 		EFFD087CA36E8E262E999F1D /* ProjectConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectConversation.swift; sourceTree = "<group>"; };
+		F122307DF142173AB365E724 /* ClassroomUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ClassroomUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -110,8 +124,9 @@
 			isa = PBXGroup;
 			children = (
 				88B1F43EC51379CDC1DD313E /* circuit-0.wav */,
-				5514D8E3F00BA56AC90701FE /* circuit-8.wav */,
-				BF61D5CE8C775477867A6FC9 /* circuit-16.wav */,
+				6A93780DACCC4AA6070DECC8 /* circuit-1.wav */,
+				0EB5F5D3E040FD0C08E45271 /* circuit-2.wav */,
+				783FE70651C818AED16F1C29 /* circuit-3.wav */,
 			);
 			path = ExampleAudio;
 			sourceTree = "<group>";
@@ -159,11 +174,20 @@
 			path = Blockbook;
 			sourceTree = "<group>";
 		};
+		21BE5B0E6208B95759617712 /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				572BCB06E1C7684D32AD98A2 /* ClassroomTests.swift */,
+			);
+			path = UITests;
+			sourceTree = "<group>";
+		};
 		6A6233F2CAAB4541862320DE /* Tests */ = {
 			isa = PBXGroup;
 			children = (
 				E115AFEBD5CE8ACFDAE00F59 /* BlockbookTests.swift */,
 				CC6CB6473F35A0497A64E166 /* CanvasTests.swift */,
+				843E1B5DEB109F668CC7D585 /* ClassroomRenderingTests.swift */,
 				3ACE978D34C2760BD58292D9 /* TeachingMotionTests.swift */,
 			);
 			path = Tests;
@@ -174,6 +198,7 @@
 			children = (
 				945D3AE3291EA2F9D49117AF /* Blockbook.app */,
 				BDA5ED71277E191272170F8A /* BlockbookTests.xctest */,
+				F122307DF142173AB365E724 /* ClassroomUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -183,6 +208,7 @@
 			children = (
 				186A79A62ACF956D4EC1D82E /* Blockbook */,
 				6A6233F2CAAB4541862320DE /* Tests */,
+				21BE5B0E6208B95759617712 /* UITests */,
 				7CC731E0E6DB6A93819631E1 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -226,6 +252,24 @@
 			productReference = BDA5ED71277E191272170F8A /* BlockbookTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		F6F424CF9B794C9F854A329D /* ClassroomUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B88E5F2375DA659E3748EA06 /* Build configuration list for PBXNativeTarget "ClassroomUITests" */;
+			buildPhases = (
+				C39F5A12407A3E0351484C0C /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5F1E1B2EB77FEB342EC52DC0 /* PBXTargetDependency */,
+			);
+			name = ClassroomUITests;
+			packageProductDependencies = (
+			);
+			productName = ClassroomUITests;
+			productReference = F122307DF142173AB365E724 /* ClassroomUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -241,6 +285,10 @@
 					};
 					AF98B2078E47126E34E4143F = {
 						ProvisioningStyle = Automatic;
+					};
+					F6F424CF9B794C9F854A329D = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = 8478EF728465BDC8F474D7F8;
 					};
 				};
 			};
@@ -260,6 +308,7 @@
 			targets = (
 				8478EF728465BDC8F474D7F8 /* Blockbook */,
 				AF98B2078E47126E34E4143F /* BlockbookTests */,
+				F6F424CF9B794C9F854A329D /* ClassroomUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -271,8 +320,9 @@
 			files = (
 				2A8EE1027412EEE50EB1F9B9 /* Assets.xcassets in Resources */,
 				EB8CC3ED63ACD6C560BC1897 /* circuit-0.wav in Resources */,
-				387D636DCE9DAF336231A854 /* circuit-16.wav in Resources */,
-				9BDF454B5032F594F812E678 /* circuit-8.wav in Resources */,
+				A4CB4BEE3598B6A8FDEE2D25 /* circuit-1.wav in Resources */,
+				9AA1612EBFCE779BC0D427E6 /* circuit-2.wav in Resources */,
+				B7381FDAD25D872C73701BC3 /* circuit-3.wav in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -285,6 +335,7 @@
 			files = (
 				366387E65CDC4BCAEDAF20F7 /* BlockbookTests.swift in Sources */,
 				17772E2200AECD201F7D9284 /* CanvasTests.swift in Sources */,
+				52FA538DE8F3AC729F6B025C /* ClassroomRenderingTests.swift in Sources */,
 				C4C69E8BAE57973F3DDEA198 /* TeachingMotionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -329,6 +380,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C39F5A12407A3E0351484C0C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				61BC192E90B478150800FC3A /* ClassroomTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -337,9 +396,48 @@
 			target = 8478EF728465BDC8F474D7F8 /* Blockbook */;
 			targetProxy = 99261E64D58CD23876A0A807 /* PBXContainerItemProxy */;
 		};
+		5F1E1B2EB77FEB342EC52DC0 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8478EF728465BDC8F474D7F8 /* Blockbook */;
+			targetProxy = 0972185EB074CD9ED10D6E45 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		4C025BEF5A7CFDCB9362C539 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.btbt.blockbook.classroomtests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Blockbook;
+			};
+			name = Debug;
+		};
+		5EAA52A214E92F6A22D91799 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.btbt.blockbook.classroomtests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Blockbook;
+			};
+			name = Release;
+		};
 		601F6F141EA85AC955D5B47E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -558,6 +656,15 @@
 			buildConfigurations = (
 				601F6F141EA85AC955D5B47E /* Debug */,
 				E356AFEC3D7E81777562ED63 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B88E5F2375DA659E3748EA06 /* Build configuration list for PBXNativeTarget "ClassroomUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4C025BEF5A7CFDCB9362C539 /* Debug */,
+				5EAA52A214E92F6A22D91799 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

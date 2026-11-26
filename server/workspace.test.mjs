@@ -71,8 +71,8 @@ test('shared workspace integration', {skip:!process.env.TEST_DATABASE_URL}, asyn
     await act('control_task',{task:proposal.id,command:'resume'});
     await run('/v1/settings',owner,{main:'gpt-6.2-sol'});
     const seen=[];
-    for(let i=0;i<4;i++)await tick(async m=>{seen.push(m);return 'Reviewed circuit '+i});
-    assert.deepEqual(seen,team('claude-opus-5-5'));assert.equal((await act('read_space')).records[0].body.text,'Reviewed circuit 3');
+    for(let i=0;i<team('claude-opus-5-5').length;i++)await tick(async m=>{seen.push(m);return 'Reviewed circuit '+i});
+    assert.deepEqual(seen,team('claude-opus-5-5'));assert.equal((await act('read_space')).records[0].body.text,'Reviewed circuit 4');
     await act('assign_task',{text:'New assignment'});const state=await act('read_conversation');assert.equal(state.tasks[0].models[0],'gpt-6.2-sol');
   });
   await t.test('two concurrent maximum reservations cannot exceed one provider budget',async()=>{

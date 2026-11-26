@@ -15,12 +15,17 @@ struct WorkspaceConnection {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: "Goodest Notes workspace", kSecAttrAccount as String: origin]
     }
 
-    static func importDeviceConfiguration() throws {
-        let file=URL.applicationSupportDirectory.appendingPathComponent("GoodestNotesConnection.json")
-        guard FileManager.default.fileExists(atPath:file.path) else {return}
+    static var deviceProject: UUID? { UserDefaults.standard.string(forKey:origin+".deviceProject").flatMap(UUID.init(uuidString:)) }
+    static func importScopedDevice() async throws {
+        let file=URL.applicationSupportDirectory.appendingPathComponent("GoodestNotesDevice.json")
+        guard FileManager.default.fileExists(atPath:file.path) else{return}
         let input=try JSONDecoder().decode([String:String].self,from:Data(contentsOf:file))
-        guard let endpoint=input["endpoint"],let key=input["ownerKey"] else {throw WorkspaceError.message("Invalid device configuration.")}
-        try save(endpoint,key:key);try FileManager.default.removeItem(at:file)
+        guard let endpoint=input["endpoint"],let token=input["deviceToken"],let project=input["project"],let id=UUID(uuidString:project),
+              let url=URL(string:endpoint),url.scheme=="https",url.host != nil,["","/"].contains(url.path),url.query==nil,url.fragment==nil,url.user==nil,url.password==nil else {throw WorkspaceError.message("Invalid device connection.")}
+        var req=URLRequest(url:url.appendingPathComponent("v1/settings"));req.setValue("Bearer "+token,forHTTPHeaderField:"Authorization")
+        let (data,response)=try await URLSession.shared.data(for:req)
+        guard (response as? HTTPURLResponse)?.statusCode==200,let role=try JSONSerialization.jsonObject(with:data) as? [String:Any],role["role"] as? String=="device",(role["project"] as? String)?.lowercased()==id.uuidString.lowercased() else {throw WorkspaceError.message("A scoped device credential is required.")}
+        try save(endpoint,key:token);UserDefaults.standard.set(id.uuidString,forKey:origin+".deviceProject");try FileManager.default.removeItem(at:file)
     }
     static func save(_ endpoint: String, key: String) throws {
         guard let url = URL(string: endpoint), url.scheme == "https", url.host != nil, url.user == nil, url.password == nil, url.query == nil, url.fragment == nil, ["","/"].contains(url.path) else { throw WorkspaceError.message("Enter the HTTPS address of your workspace.") }
@@ -34,6 +39,7 @@ struct WorkspaceConnection {
                 guard SecItemAdd(query.merging(data) { _, new in new } as CFDictionary, nil) == errSecSuccess else { throw WorkspaceError.message("Could not save the workspace key in Keychain.") }
             } else if result != errSecSuccess { throw WorkspaceError.message("Could not update the workspace key in Keychain.") }
         }
+        if !key.isEmpty { UserDefaults.standard.removeObject(forKey:origin+".deviceProject") }
         UserDefaults.standard.set(origin, forKey: endpointKey)
     }
     static func request(_ path: String, _ payload: [String:Any]? = nil) async throws -> Any {
@@ -180,7 +186,7 @@ private struct RecordSnapshot {
             let directory=studio.folder
             let local = try await Task.detached(priority: .utility) {
                 var records=try RecordSnapshot.records(library,for:project)
-                for path in WorkspaceFile.sources(library,project:project,folder:directory).sorted() {
+                for path in (WorkspaceConnection.deviceProject == nil ? WorkspaceFile.sources(library,project:project,folder:directory).sorted() : []) {
                     records.append(try await RecordSnapshot(file:WorkspaceFile.publish(path,folder:directory)))
                 }
                 return records
@@ -188,6 +194,25 @@ private struct RecordSnapshot {
             let defaults = UserDefaults.standard
             var baselines = defaults.dictionary(forKey:key(id,"hash")) as? [String:String] ?? [:]
             var versions = defaults.dictionary(forKey:key(id,"versions")) as? [String:Int] ?? [:]
+            if let scope=WorkspaceConnection.deviceProject {
+                guard scope==id else{return}
+                let remote=try await WorkspaceConnection.action("read_space",project:id)
+                let notes=(remote["records"] as? [[String:Any]] ?? []).filter{$0["kind"] as? String=="note"}
+                for row in notes {
+                    guard let key=row["id"] as? String,let sheet=UUID(uuidString:String(key.dropFirst(5))),let rev=row["rev"] as? Int,let body=row["body"] as? [String:Any],let text=body["text"] as? String,let local=local.first(where:{$0.id==key}),let paper=studio.library.papers.first(where:{$0.pages.contains(where:{$0.id==sheet})}),let current=paper.pages.first(where:{$0.id==sheet}) else{continue}
+                    if let base=baselines[key],base != local.hash,let typed=local.body["text"] as? String {
+                        let requestKey=self.key(id,"deviceNote."+key+"."+local.hash)
+                        let request=defaults.string(forKey:requestKey) ?? UUID().uuidString;defaults.set(request,forKey:requestKey)
+                        _ = try await WorkspaceConnection.action("edit_note",project:id,args:["request_id":request,"record":key,"revision":versions[key] ?? 0,"text":typed])
+                        baselines[key]=local.hash;continue
+                    }
+                    if current.typed != text && current.typed == local.body["text"] as? String {_=studio.editPage(paper.id,sheet){$0.typed=text}}
+                    baselines[key]=try RecordSnapshot.hash(body);versions[key]=rev
+                }
+                guard studio.flushWrites() else{throw WorkspaceError.message("Could not save downloaded text.")}
+                defaults.set(baselines,forKey:key(id,"hash"));defaults.set(versions,forKey:key(id,"versions"))
+                status[id]="Page text synced · project access";return
+            }
             let changes = local.filter { baselines[$0.id] != $0.hash }
             let removed = Set(baselines.keys).subtracting(local.map(\.id))
             for record in changes {

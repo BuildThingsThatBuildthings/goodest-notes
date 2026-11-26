@@ -50,3 +50,24 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.btbt.blockbook.tests
+
+  ClassroomUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    dependencies:
+      - target: Blockbook
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.btbt.blockbook.classroomtests
+        TEST_TARGET_NAME: Blockbook
+
+schemes:
+  ClassroomUI:
+    build:
+      targets:
+        Blockbook: all
+        ClassroomUITests: [test]
+    test:
+      targets: [ClassroomUITests]

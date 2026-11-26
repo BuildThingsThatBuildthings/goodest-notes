@@ -9,7 +9,7 @@ export const models = {
 };
 export function team(main) {
   const fromClaude=models[main][0]==='anthropic';
-  return [main,fromClaude?'gpt-6.2-sol':'claude-opus-5-5',fromClaude?'claude-opus-5-5':'gpt-6.2-sol',fromClaude?'gpt-6.2-astra':'claude-fable-5-2'];
+  return [main,fromClaude?'claude-fable-5-2':'gpt-6.2-astra',fromClaude?'gpt-6.2-sol':'claude-opus-5-5',fromClaude?'claude-opus-5-5':'gpt-6.2-sol',fromClaude?'gpt-6.2-astra':'claude-fable-5-2'];
 }
 export const month = (d=new Date())=>d.toISOString().slice(0,7);
 export const limit=75000000; // microdollars

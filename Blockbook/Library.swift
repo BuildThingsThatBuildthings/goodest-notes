@@ -67,6 +67,12 @@ struct SheetPage: Codable, Identifiable, Equatable {
     var pdfText = ""
     var inkText = ""
     var visual: TeachingVisual?
+    var savedVisuals: [TeachingVisual]?
+    var teachingVisuals:[TeachingVisual] {
+        var all=savedVisuals ?? []
+        if let visual,!all.contains(where:{$0.id==visual.id}) {all.append(visual)}
+        return all
+    }
     var needsPDFIndex: Bool?
     var canvas: CanvasContent?
     var text: String {

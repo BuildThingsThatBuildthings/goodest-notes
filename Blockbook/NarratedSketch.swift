@@ -15,8 +15,13 @@ enum NarratedSketch {
         let composition=AVMutableComposition()
         guard let voice=composition.addMutableTrack(withMediaType:.audio,preferredTrackID:kCMPersistentTrackID_Invalid) else { throw WorkspaceError.message("Could not create the voice track.") }
         var cursor=CMTime.zero, cues:[(end:Double,text:String)]=[]
-        for start in stride(from:0,to:words.count,by:8) {
-            let phrase=words[start..<min(start+8,words.count)].joined(separator:" ")
+        var phrases:[String]=[],building:[Substring]=[]
+        for word in words {
+            building.append(word)
+            if building.count>=11 || word.last.map({".!?,;".contains($0)})==true { phrases.append(building.joined(separator:" "));building=[] }
+        }
+        if !building.isEmpty {phrases.append(building.joined(separator:" "))}
+        for (start,phrase) in phrases.enumerated() {
             var file=folder.appendingPathComponent("phrase-\(start).caf")
             if caption==CircuitLesson.narration,let bundled=Bundle.main.url(forResource:"circuit-"+String(start),withExtension:"wav") {file=bundled}
             else {
@@ -34,7 +39,7 @@ enum NarratedSketch {
             cursor=cursor+duration;cues.append((cursor.seconds,phrase))
         }
         let film=folder.appendingPathComponent("ink.mp4"), length=max(3.2,cursor.seconds+0.4)
-        try await frames(scene:scene,length:length,cues:cues,to:film)
+        try await frames(scene:scene,length:length,cues:cues,stagedCircuit:caption==CircuitLesson.narration,to:film)
         let asset=AVURLAsset(url:film)
         guard let source=try await asset.loadTracks(withMediaType:.video).first,
               let picture=composition.addMutableTrack(withMediaType:.video,preferredTrackID:kCMPersistentTrackID_Invalid) else {throw WorkspaceError.message("Could not assemble the movie.")}
@@ -44,7 +49,7 @@ enum NarratedSketch {
         await export.export()
         guard export.status == .completed else {throw export.error ?? WorkspaceError.message("Movie export failed.")}
     }
-    private static func frames(scene:SketchScene,length:Double,cues:[(end:Double,text:String)],to url:URL) async throws {
+    private static func frames(scene:SketchScene,length:Double,cues:[(end:Double,text:String)],stagedCircuit:Bool,to url:URL) async throws {
         let w=640,h=496,fps=24
         let writer=try AVAssetWriter(url:url,fileType:.mp4)
         let input=AVAssetWriterInput(mediaType:.video,outputSettings:[AVVideoCodecKey:AVVideoCodecType.h264,AVVideoWidthKey:w,AVVideoHeightKey:h])
@@ -65,7 +70,15 @@ enum NarratedSketch {
                 let image=renderer.image { c in
                     UIColor.white.setFill();c.fill(CGRect(x:0,y:0,width:w,height:h))
                     let size=CGSize(width:scene.size.width*ratio,height:scene.size.height*ratio)
-                    scene.frame(min(0.75,t/length)).draw(in:CGRect(x:(640-size.width)/2,y:(410-size.height)/2,width:size.width,height:size.height))
+                    let progress:Double
+                    if stagedCircuit,cues.count==4 {
+                        let stage=cues.firstIndex(where:{ t<$0.end }) ?? 3
+                        let begin=stage==0 ? 0:cues[stage-1].end
+                        let fraction=min(1,max(0,(t-begin)/max(0.01,cues[stage].end-begin)))
+                        let stops=[0.0,0.39,0.48,0.62,0.75]
+                        progress=stops[stage]+fraction*(stops[stage+1]-stops[stage])
+                    }else{progress=min(0.75,t/length)}
+                    scene.frame(progress).draw(in:CGRect(x:(640-size.width)/2,y:(410-size.height)/2,width:size.width,height:size.height))
                     let p=NSMutableParagraphStyle();p.alignment = .center
                     let line=cues.first { t<$0.end }?.text ?? ""
                     (line as NSString).draw(in:CGRect(x:30,y:414,width:580,height:76),withAttributes:[.font:UIFont.systemFont(ofSize:22,weight:.medium),.foregroundColor:UIColor.black,.paragraphStyle:p])

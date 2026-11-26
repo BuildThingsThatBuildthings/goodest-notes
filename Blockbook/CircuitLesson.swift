@@ -1,7 +1,7 @@
 import PencilKit
 
 enum CircuitLesson {
-    static let narration="The switch rotates around its hinge until the contacts meet. Current travels along the wire and lights the filament."
+    static let narration="The switch pivots around its hinge. The two contacts meet. Current travels along the wire. The filament lights."
     static func drawing() -> PKDrawing {
         typealias XY=(CGFloat,CGFloat)
         func stroke(_ vertices:[XY])->PKStroke {
