@@ -6,6 +6,20 @@ import XCTest
 @testable import Blockbook
 
 final class CanvasTests: XCTestCase {
+    func testPolishingKeepsOriginalInkAndStrokeEndpoints() throws {
+        let points = [CGPoint(x:0,y:0),CGPoint(x:5,y:2),CGPoint(x:10,y:0)].enumerated().map { i, p in
+            PKStrokePoint(location:p,timeOffset:Double(i)/60,size:CGSize(width:2,height:2),
+                          opacity:1,force:0.6,azimuth:0,altitude:1)
+        }
+        let stroke = PKStroke(ink:PKInk(.pen,color:.blue),path:PKStrokePath(controlPoints:points,creationDate:Date()))
+        let polished = try XCTUnwrap(HandwritingSmoothing.drawing([stroke],strength:1).strokes.first)
+        XCTAssertEqual(polished.path[0].location,stroke.path[0].location)
+        XCTAssertEqual(polished.path[2].location,stroke.path[2].location)
+        XCTAssertLessThan(polished.path[1].location.y,stroke.path[1].location.y)
+        XCTAssertEqual(stroke.path[1].location,points[1].location)
+        XCTAssertEqual(polished.path[1].force,stroke.path[1].force)
+    }
+
     func testGlowInkSurvivesPencilKitSaveAndAddsAHalo() throws {
         let glow = inkStroke(at: CGPoint(x: 40, y: 40), color: GlowInk.color(.systemPurple))
         let pen = inkStroke(at: CGPoint(x: 160, y: 80))

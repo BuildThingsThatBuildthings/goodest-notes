@@ -246,3 +246,57 @@ struct SketchStudio: View {
         } }
     }
 }
+
+enum HandwritingSmoothing {
+    static func drawing(_ strokes: [PKStroke], strength: Double) -> PKDrawing {
+        PKDrawing(strokes: strokes.map { stroke in
+            guard strength > 0, stroke.path.count > 2 else { return stroke }
+            let path = Array(stroke.path)
+            let points = path.indices.map { i -> PKStrokePoint in
+                let point = path[i]
+                guard i > 0, i+1 < path.count else { return point }
+                let a = path[i-1].location, b = point.location, c = path[i+1].location
+                let u = CGVector(dx:b.x-a.x,dy:b.y-a.y), v = CGVector(dx:c.x-b.x,dy:c.y-b.y)
+                let left = hypot(u.dx,u.dy), right = hypot(v.dx,v.dy)
+                guard left > 0, right > 0 else { return point }
+                // Retain deliberate corners and reversals such as the tip of a v.
+                let alignment = max(0,(u.dx*v.dx+u.dy*v.dy)/(left*right))
+                let weight = min(1,strength)*0.8*alignment
+                let location = CGPoint(x:b.x+weight*(v.dx*left-u.dx*right)/(left+right),
+                                       y:b.y+weight*(v.dy*left-u.dy*right)/(left+right))
+                return PKStrokePoint(location:location,timeOffset:point.timeOffset,size:point.size,
+                                     opacity:point.opacity,force:point.force,azimuth:point.azimuth,altitude:point.altitude)
+            }
+            var copy = stroke
+            copy.path = PKStrokePath(controlPoints:points,creationDate:stroke.path.creationDate)
+            return copy
+        })
+    }
+}
+
+struct HandwritingPolisher: View {
+    let source: SketchSelection
+    let save: (PKDrawing) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var strength = 0.65
+    @State private var showOriginal = false
+
+    var body: some View {
+        let drawing = HandwritingSmoothing.drawing(source.strokes,strength:strength)
+        NavigationStack {
+            VStack(alignment:.leading,spacing:18) {
+                Picker("Preview",selection:$showOriginal) {
+                    Text("Original").tag(true); Text("Polished").tag(false)
+                }.pickerStyle(.segmented)
+                Image(uiImage:lightInk(showOriginal ? PKDrawing(strokes:source.strokes) : drawing,
+                                       rect:source.rect,scale:min(3,1200/max(source.rect.width,source.rect.height))))
+                    .resizable().scaledToFit().frame(maxWidth:.infinity,maxHeight:.infinity)
+                    .background(Color.white,in:RoundedRectangle(cornerRadius:12))
+                Text("Smoothing")
+                Slider(value:$strength,in:0...1).accessibilityLabel("Smoothing strength")
+                Button("Save polished ink on next page") { save(drawing) }.buttonStyle(.borderedProminent)
+            }.padding().navigationTitle("Polish handwriting")
+                .toolbar { ToolbarItem(placement:.cancellationAction) { Button("Cancel") { dismiss() } } }
+        }
+    }
+}

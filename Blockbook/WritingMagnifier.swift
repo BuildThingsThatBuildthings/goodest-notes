@@ -111,7 +111,7 @@ final class WritingLensSurface: UIView, PKCanvasViewDelegate {
     private let backdrop: LensPaper
     private let overlay = CanvasOverlay()
     private let glow = GlowInkView()
-    private let ink = PKCanvasView()
+    private let ink = CloudInkCanvas()
     private var target = CGPoint.zero
     private var zoom: CGFloat = 2
     private var inkWindow: BoardInkWindow?
