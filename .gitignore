@@ -10,3 +10,10 @@ xcuserdata/
 *.p12
 *.mobileprovision
 *.sqlite*
+*.dump
+*.zip
+*.tgz
+*.xcresult/
+*.pem
+*.key
+private/

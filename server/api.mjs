@@ -1,3 +1,4 @@
+import {readText} from './request.mjs';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {actor,scope,oauth,origin,digest,register,clientLabel} from './auth.mjs';
 import {transaction,one,many,uuid,string,requireThat} from './db.mjs';
@@ -19,7 +20,7 @@ const tools=[
 ];
 const json=(data,status=200,extra={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store',...extra}});
 async function body(req){
-  const data=await req.text();requireThat(Buffer.byteLength(data)<4500000,'Payload too large',413);
+  const data=await readText(req,4499999);
   try{return JSON.parse(data);}catch{throw Object.assign(new Error('Invalid JSON'),{status:400});}
 }
 async function projects(c,who) {
