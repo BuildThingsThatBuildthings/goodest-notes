@@ -1,0 +1,27 @@
+#!/bin/zsh
+set -eu
+bridge_dir="${0:A:h}"
+cache_dir="${TMPDIR:-/tmp}/blockbook-mcp-${UID}"
+umask 077
+mkdir -p "$cache_dir"
+source_dir="$bridge_dir/../Blockbook"
+sources=("$source_dir/AgentWire.swift" "$source_dir/AgentCatalog.swift" "$bridge_dir/main.swift")
+binary="$cache_dir/bridge"
+needs_build=0
+for source in "${sources[@]}"; do
+  if [[ ! -x "$binary" || "$source" -nt "$binary" ]]; then needs_build=1; break; fi
+done
+if (( needs_build )); then
+  candidate="$(mktemp "$cache_dir/bridge.XXXXXXXX")"
+  trap 'rm -f "$candidate"' EXIT
+  /usr/bin/xcrun swiftc -O "${sources[@]}" -o "$candidate"
+  mv -f "$candidate" "$binary"
+  trap - EXIT
+fi
+if [[ "${1:-}" == pair && -t 0 ]]; then
+  read -rs 'pairing_code?Paste the Blockbook connection code: '
+  printf '\n' >&2
+  printf '%s\n' "$pairing_code" | "$binary" "$@"
+  exit $?
+fi
+exec "$binary" "$@"

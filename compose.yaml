@@ -1,0 +1,32 @@
+x-app: &app
+  build: .
+  env_file: .env
+  environment:
+    DATABASE_URL: postgres://goodest:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db/goodest
+  restart: unless-stopped
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: goodest
+      POSTGRES_DB: goodest
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - workspace:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U goodest"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  web:
+    <<: *app
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      db: {condition: service_healthy}
+  worker:
+    <<: *app
+    command: ["node","server/worker-loop.mjs"]
+    depends_on: [web]
+volumes:
+  workspace:

@@ -1,0 +1,12 @@
+.env*
+!.env.example
+.netlify/
+node_modules/
+DerivedData/
+build/
+.DS_Store
+xcuserdata/
+*.xcuserstate
+*.p12
+*.mobileprovision
+*.sqlite*
