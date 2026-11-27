@@ -2,9 +2,11 @@
 // request uses an explicit output limit and a conservative input byte bound.
 export const providers=['openai','anthropic','google','xai'];
 export function monthlyLimit(provider) {
-  if(provider==='openai'||provider==='anthropic') return limit;
-  const value=Number(process.env[{google:'GOOGLE_MONTHLY_USD',xai:'XAI_MONTHLY_USD'}[provider]]||0);
-  return Number.isFinite(value)&&value>0?Math.floor(value*1e6):0;
+  if (!providers.includes(provider)) return 0;
+  const defaultUsd = ['openai','anthropic'].includes(provider) ? 75 : 0;
+  const configured = process.env[provider.toUpperCase() + '_MONTHLY_USD'] ?? defaultUsd;
+  const micros = Math.floor(Number(configured) * 1e6);
+  return Number.isSafeInteger(micros) && micros > 0 ? micros : 0;
 }
 export const models = {
   'gemini-4-neon':['google',4,20],
@@ -20,4 +22,3 @@ export function team(main) {
   return [main,fromClaude?'claude-fable-5-2':'gpt-6.2-astra',fromClaude?'gpt-6.2-sol':'claude-opus-5-5',fromClaude?'claude-opus-5-5':'gpt-6.2-sol',fromClaude?'gpt-6.2-astra':'claude-fable-5-2'];
 }
 export const month = (d=new Date())=>d.toISOString().slice(0,7);
-export const limit=75000000; // microdollars
