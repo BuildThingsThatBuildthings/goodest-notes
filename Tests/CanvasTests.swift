@@ -36,8 +36,8 @@ final class CanvasTests: XCTestCase {
         XCTAssertEqual(polished.path[1].force,stroke.path[1].force)
     }
 
-    @MainActor func testSavedGlowKeepsMovingWhilePencilIsUp() async throws {
-        try XCTSkipIf(UIAccessibility.isReduceMotionEnabled, "Reduce Motion uses a steady filament.")
+    @MainActor func testSavedGlowBreathesAcrossWholeStroke() async throws {
+        try XCTSkipIf(UIAccessibility.isReduceMotionEnabled, "Reduce Motion keeps the cloud steady.")
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.rootViewController = UIViewController()
@@ -48,15 +48,20 @@ final class CanvasTests: XCTestCase {
         let drawing = PKDrawing(strokes: [inkStroke(at: CGPoint(x: 40, y: 40), color: GlowInk.color(.cyan))])
         overlay.strokes = GlowInk.strokes(in: try PKDrawing(data: drawing.dataRepresentation()))
         let tube = try XCTUnwrap(overlay.layer.sublayers?.first?.sublayers?.first as? CAShapeLayer)
-        let filament = try XCTUnwrap(tube.sublayers?.first as? CAShapeLayer)
-        XCTAssertGreaterThan(tube.shadowOpacity, 0.8)
+        let cloud = try XCTUnwrap(tube.sublayers?.first as? CAShapeLayer)
+        XCTAssertNil(cloud.lineDashPattern)
+        XCTAssertEqual(cloud.path, tube.path)
+        XCTAssertNotNil(cloud.shadowPath)
+        XCTAssertEqual(cloud.animation(forKey: "breath")?.repeatCount, .infinity)
         CATransaction.flush()
-        try await Task.sleep(nanoseconds: 250_000_000)
-        let first = try XCTUnwrap(filament.presentation()).lineDashPhase
-        try await Task.sleep(nanoseconds: 400_000_000)
-        let second = try XCTUnwrap(filament.presentation()).lineDashPhase
-        XCTAssertGreaterThan(abs(second - first), 1)
-        XCTAssertEqual(filament.animation(forKey: "flow")?.repeatCount, .infinity)
+        var radii: [CGFloat] = []
+        for _ in 0..<5 {
+            try await Task.sleep(nanoseconds: 250_000_000)
+            let frame = try XCTUnwrap(cloud.presentation())
+            XCTAssertGreaterThan(frame.shadowOpacity, 0.5)
+            radii.append(frame.shadowRadius)
+        }
+        XCTAssertGreaterThan(radii.max()! - radii.min()!, 0.08)
         overlay.strokes = []
         XCTAssertNil(tube.superlayer)
     }

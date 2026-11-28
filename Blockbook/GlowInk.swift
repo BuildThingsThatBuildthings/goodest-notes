@@ -40,58 +40,67 @@ enum GlowInk {
     }
 }
 
-// Keep the colored tube continuously lit. A second, fine filament moves along
-// the centerline, so the motion follows the handwriting through each turn.
+// A close bloom defines the writing; a second, softer bloom breathes across
+// the entire silhouette. Both the live preview and committed ink use this layer.
 private final class LuminousStroke {
     let tube = CAShapeLayer()
-    private let filament = CAShapeLayer()
-    private let cycle: CGFloat
+    private let cloud = CAShapeLayer()
 
     init(color: UIColor, width: CGFloat) {
         let w = max(0.9, width)
-        cycle = max(26, w * 12)
-        for shape in [tube, filament] {
+        for shape in [tube, cloud] {
             shape.fillColor = nil
             shape.lineCap = .round
             shape.lineJoin = .round
+            shape.shadowColor = color.cgColor
+            shape.shadowOffset = .zero
             shape.actions = ["path": NSNull(), "shadowPath": NSNull(), "hidden": NSNull()]
         }
-        tube.strokeColor = color.withAlphaComponent(0.98).cgColor
+        tube.strokeColor = color.withAlphaComponent(0.86).cgColor
         tube.lineWidth = w
-        tube.shadowColor = color.cgColor
-        tube.shadowOpacity = 0.95
-        tube.shadowOffset = .zero
-        tube.shadowRadius = min(8, max(2.5, w * 1.25))
-        filament.strokeColor = UIColor.white.withAlphaComponent(0.88).cgColor
-        filament.lineWidth = max(0.55, w * 0.38)
-        filament.lineDashPattern = [NSNumber(value: Double(cycle * 0.58)), NSNumber(value: Double(cycle * 0.42))]
-        tube.addSublayer(filament)
+        tube.shadowOpacity = 0.82
+        tube.shadowRadius = min(5, max(1.3, w * 0.6))
+        cloud.strokeColor = UIColor.white.withAlphaComponent(0.32).cgColor
+        cloud.lineWidth = w * 0.65
+        cloud.shadowRadius = min(12, max(3, w * 1.55))
+        cloud.shadowOpacity = 0.78
+        tube.addSublayer(cloud)
         setMotion()
     }
 
     func setPath(_ path: CGPath) {
         tube.path = path
-        filament.path = path
-        tube.shadowPath = path.copy(strokingWithWidth: tube.lineWidth * 1.25, lineCap: .round, lineJoin: .round, miterLimit: 1)
+        cloud.path = path
+        tube.shadowPath = path.copy(strokingWithWidth: tube.lineWidth * 1.5, lineCap: .round, lineJoin: .round, miterLimit: 1)
+        cloud.shadowPath = path.copy(strokingWithWidth: tube.lineWidth * 2.4, lineCap: .round, lineJoin: .round, miterLimit: 1)
     }
 
     func setMotion() {
         if UIAccessibility.isReduceMotionEnabled {
-            filament.removeAnimation(forKey: "flow")
-            filament.lineDashPattern = nil
-            filament.opacity = 0.7
-        } else {
-            guard filament.animation(forKey: "flow") == nil else { return }
-            filament.lineDashPattern = [NSNumber(value: Double(cycle * 0.58)), NSNumber(value: Double(cycle * 0.42))]
-            filament.opacity = 1
-            let flow = CABasicAnimation(keyPath: "lineDashPhase")
-            flow.fromValue = 0
-            flow.toValue = -cycle
-            flow.duration = 2.15
-            flow.repeatCount = .infinity
-            flow.timingFunction = CAMediaTimingFunction(name: .linear)
-            filament.add(flow, forKey: "flow")
+            cloud.removeAnimation(forKey: "breath")
+            return
         }
+        guard cloud.animation(forKey: "breath") == nil else { return }
+        let spread = CABasicAnimation(keyPath: "shadowRadius")
+        spread.fromValue = cloud.shadowRadius * 0.8
+        spread.toValue = cloud.shadowRadius * 1.3
+        let strength = CABasicAnimation(keyPath: "shadowOpacity")
+        strength.fromValue = 0.62
+        strength.toValue = 0.94
+        let breath = CAAnimationGroup()
+        breath.duration = 2.1
+        for animation in [spread, strength] {
+            animation.duration = breath.duration
+            animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        }
+        breath.animations = [spread, strength]
+        breath.autoreverses = true
+        breath.repeatCount = .infinity
+        // Match phases when PencilKit hands the live stroke to the saved layer.
+        let period = breath.duration * 2
+        let now = CACurrentMediaTime()
+        breath.beginTime = now - now.truncatingRemainder(dividingBy: period)
+        cloud.add(breath, forKey: "breath")
     }
 }
 
@@ -211,7 +220,7 @@ final class CloudInkCanvas: PKCanvasView {
             layer.addSublayer(light.tube)
             liveLight = light
             tint = color
-            tip.colors = [UIColor.white.withAlphaComponent(0.85).cgColor, color.withAlphaComponent(0.76).cgColor,
+            tip.colors = [color.withAlphaComponent(0.90).cgColor, color.withAlphaComponent(0.66).cgColor,
                           color.withAlphaComponent(0.31).cgColor, color.withAlphaComponent(0).cgColor]
         }
         let diameter = max(12, min(32, width * 3 + 6))
@@ -226,6 +235,7 @@ final class CloudInkCanvas: PKCanvasView {
 
     @objc private func trackInk(_ gesture: UIGestureRecognizer) {
         guard tint != nil else { return }
+        if gesture.state == .began { liveLight?.setMotion() }
         switch gesture.state {
         case .began, .changed:
             let point = gesture.location(in: self)
