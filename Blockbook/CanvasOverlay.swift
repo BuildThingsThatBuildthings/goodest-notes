@@ -32,9 +32,9 @@ extension CanvasItem {
         ]
         if glow == true {
             let shadow = NSShadow()
-            shadow.shadowColor = tint.halo
+            shadow.shadowColor = tint.halo.withAlphaComponent(0.70)
             shadow.shadowOffset = .zero
-            shadow.shadowBlurRadius = kind == .text ? 10 : 6
+            shadow.shadowBlurRadius = kind == .text ? 3.5 : 2.5
             attributes[.shadow] = shadow
         }
         return attributes

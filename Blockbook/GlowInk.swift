@@ -21,18 +21,18 @@ enum GlowInk {
         context.setLineCap(.round)
         context.setLineJoin(.round)
         defer { context.restoreGState() }
-        let layers: [(CGFloat, CGFloat)] = [(3.6, 0.07), (2.8, 0.10), (2.0, 0.15), (1.45, 0.22)]
+        let layers: [(CGFloat, CGFloat)] = [(1.6, 0.07), (0.95, 0.12), (0.42, 0.22)]
         for stroke in strokes where stroke.renderBounds.insetBy(dx: -35, dy: -35).intersects(visible) {
             guard let first = stroke.path.first else { continue }
             let center = first.location.applying(stroke.transform)
             let path = CGMutablePath()
             path.move(to: center)
-            for point in stroke.path.dropFirst() { path.addLine(to: point.location.applying(stroke.transform)) }
+            for point in stroke.path.interpolatedPoints(by: .parametricStep(0.5)) { path.addLine(to: point.location.applying(stroke.transform)) }
             if stroke.path.count == 1 { path.addLine(to: CGPoint(x: center.x + 0.1, y: center.y)) }
             let width = max(1, first.size.width * hypot(stroke.transform.a, stroke.transform.b))
             for (spread, opacity) in layers {
                 context.addPath(path)
-                context.setLineWidth(width * spread)
+                context.setLineWidth(width + min(4, max(1, width)) * spread)
                 context.setStrokeColor(stroke.ink.color.withAlphaComponent(opacity).cgColor)
                 context.strokePath()
             }
@@ -41,7 +41,7 @@ enum GlowInk {
 }
 
 final class GlowInkView: UIView {
-    var strokes: [PKStroke] = [] { didSet { setNeedsDisplay() } }
+    var strokes: [PKStroke] = [] { didSet { setNeedsDisplay(); updatePulse() } }
     var camera: BoardCamera? {
         didSet { if camera != oldValue, !strokes.isEmpty { setNeedsDisplay() } }
     }
@@ -56,6 +56,32 @@ final class GlowInkView: UIView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        NotificationCenter.default.removeObserver(self, name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
+        if window != nil {
+            NotificationCenter.default.addObserver(self, selector: #selector(updatePulse), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
+        }
+        updatePulse()
+    }
+
+    @objc private func updatePulse() {
+        let key = "haloBreathing"
+        guard window != nil, !strokes.isEmpty, !UIAccessibility.isReduceMotionEnabled else {
+            layer.removeAnimation(forKey: key)
+            return
+        }
+        guard layer.animation(forKey: key) == nil else { return }
+        let pulse = CABasicAnimation(keyPath: "opacity")
+        pulse.fromValue = 1
+        pulse.toValue = 0.79
+        pulse.duration = 1.65
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.add(pulse, forKey: key)
+    }
+
     override func draw(_ rect: CGRect) {
         guard !strokes.isEmpty, let context = UIGraphicsGetCurrentContext() else { return }
         if let camera { context.concatenate(camera.projection) }
@@ -64,7 +90,7 @@ final class GlowInkView: UIView {
 }
 
 // Observe PencilKit's own drawing gesture so navigation and Pencil input retain
-// their normal ownership. Only transient particles live on this layer.
+// their normal ownership. The tip and active halo are presentation layers only.
 final class CloudInkCanvas: PKCanvasView {
     private var secondWriter: FingerInkGesture?
     private var waitingStrokes: [(PKStroke,CAShapeLayer)] = []
@@ -93,62 +119,73 @@ final class CloudInkCanvas: PKCanvasView {
         drawing=PKDrawing(strokes:drawing.strokes+finished.map{$0.0})
         finished.forEach{$0.1.removeFromSuperlayer()}
     }
-    private let mist = CAEmitterLayer()
+    private let tip = CAGradientLayer()
+    private let activeHalo = CAShapeLayer()
+    private let activePath = UIBezierPath()
     private var tint: UIColor?
-    private var diameter: CGFloat = 0
-    private static let puff: CGImage? = UIGraphicsImageRenderer(size: CGSize(width: 48,height: 48)).image { render in
-        let colors = [UIColor.white.cgColor, UIColor.white.withAlphaComponent(0.44).cgColor, UIColor.white.withAlphaComponent(0).cgColor]
-        guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: [0,0.34,1]) else { return }
-        let center = CGPoint(x: 24,y: 24)
-        render.cgContext.drawRadialGradient(gradient,startCenter:center,startRadius:0,endCenter:center,endRadius:24,options:[])
-    }.cgImage
 
     func configureCloud(_ color: UIColor?, width: CGFloat) {
-        if mist.superlayer == nil, color != nil {
-            mist.birthRate = 0
-            mist.zPosition = 10
-            mist.actions = ["emitterPosition": NSNull(), "birthRate": NSNull()]
-            layer.addSublayer(mist)
+        if tip.superlayer == nil, color != nil {
+            activeHalo.fillColor = nil
+            activeHalo.lineCap = .round
+            activeHalo.lineJoin = .round
+            activeHalo.zPosition = 9
+            activeHalo.actions = ["path": NSNull(), "hidden": NSNull()]
+            layer.addSublayer(activeHalo)
+            tip.type = .radial
+            tip.startPoint = CGPoint(x: 0.5, y: 0.5)
+            tip.endPoint = CGPoint(x: 1, y: 0.5)
+            tip.locations = [0, 0.16, 0.45, 1]
+            tip.zPosition = 10
+            tip.actions = ["position": NSNull(), "hidden": NSNull(), "bounds": NSNull(), "colors": NSNull()]
+            tip.isHidden = true
+            layer.addSublayer(tip)
             drawingGestureRecognizer.addTarget(self, action: #selector(trackInk(_:)))
         }
-        guard color != tint || width != diameter else { return }
-        tint = color
-        diameter = width
-        guard let color else { mist.birthRate = 0; return }
-        let cloud = CAEmitterCell()
-        cloud.contents = Self.puff
-        cloud.contentsScale = UIScreen.main.scale
-        cloud.color = color.resolvedColor(with: traitCollection).cgColor
-        cloud.birthRate = 100
-        cloud.lifetime = 0.42
-        cloud.scale = min(1.1, 0.33 + width / 45)
-        cloud.scaleSpeed = 0.75
-        cloud.velocity = 13
-        cloud.velocityRange = 9
-        cloud.emissionRange = .pi * 2
-        cloud.alphaSpeed = -2.2
-        let core = CAEmitterCell()
-        core.contents = cloud.contents
-        core.contentsScale = cloud.contentsScale
-        core.color = UIColor.white.withAlphaComponent(0.85).cgColor
-        core.birthRate = 72
-        core.lifetime = 0.15
-        core.scale = cloud.scale * 0.55
-        core.scaleSpeed = 0.25
-        core.alphaSpeed = -5
-        mist.emitterCells = [cloud, core]
+        guard let color else {
+            tint = nil
+            clearTip()
+            return
+        }
+        if tint != color {
+            tint = color
+            tip.colors = [UIColor.white.withAlphaComponent(0.85).cgColor, color.withAlphaComponent(0.76).cgColor,
+                          color.withAlphaComponent(0.31).cgColor, color.withAlphaComponent(0).cgColor]
+            activeHalo.strokeColor = color.withAlphaComponent(0.19).cgColor
+        }
+        let diameter = max(4, min(18, width * 2.4 + 2))
+        tip.bounds = CGRect(x: 0, y: 0, width: diameter, height: diameter)
+        activeHalo.lineWidth = width + min(4, max(1, width))
+    }
+
+    private func clearTip() {
+        tip.isHidden = true
+        activeHalo.path = nil
+        activePath.removeAllPoints()
     }
 
     @objc private func trackInk(_ gesture: UIGestureRecognizer) {
-        guard tint != nil, !UIAccessibility.isReduceMotionEnabled,
-              gesture.state == .began || gesture.state == .changed else { mist.birthRate = 0; return }
-        mist.emitterPosition = gesture.location(in: self)
-        mist.birthRate = 1
+        guard tint != nil else { return }
+        switch gesture.state {
+        case .began, .changed:
+            let point = gesture.location(in: self)
+            if gesture.state == .began || activePath.isEmpty {
+                activePath.removeAllPoints()
+                activePath.move(to: point)
+            } else {
+                activePath.addLine(to: point)
+            }
+            activeHalo.path = activePath.cgPath
+            tip.position = point
+            tip.isHidden = false
+        default:
+            clearTip()
+        }
     }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window == nil { mist.birthRate = 0 }
+        if window == nil { clearTip() }
     }
 }
 
