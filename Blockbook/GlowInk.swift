@@ -40,52 +40,113 @@ enum GlowInk {
     }
 }
 
-final class GlowInkView: UIView {
-    var strokes: [PKStroke] = [] { didSet { setNeedsDisplay(); updatePulse() } }
-    var camera: BoardCamera? {
-        didSet { if camera != oldValue, !strokes.isEmpty { setNeedsDisplay() } }
+// Keep the colored tube continuously lit. A second, fine filament moves along
+// the centerline, so the motion follows the handwriting through each turn.
+private final class LuminousStroke {
+    let tube = CAShapeLayer()
+    private let filament = CAShapeLayer()
+    private let cycle: CGFloat
+
+    init(color: UIColor, width: CGFloat) {
+        let w = max(0.9, width)
+        cycle = max(26, w * 12)
+        for shape in [tube, filament] {
+            shape.fillColor = nil
+            shape.lineCap = .round
+            shape.lineJoin = .round
+            shape.actions = ["path": NSNull(), "shadowPath": NSNull(), "hidden": NSNull()]
+        }
+        tube.strokeColor = color.withAlphaComponent(0.98).cgColor
+        tube.lineWidth = w
+        tube.shadowColor = color.cgColor
+        tube.shadowOpacity = 0.95
+        tube.shadowOffset = .zero
+        tube.shadowRadius = min(8, max(2.5, w * 1.25))
+        filament.strokeColor = UIColor.white.withAlphaComponent(0.88).cgColor
+        filament.lineWidth = max(0.55, w * 0.38)
+        filament.lineDashPattern = [NSNumber(value: Double(cycle * 0.58)), NSNumber(value: Double(cycle * 0.42))]
+        tube.addSublayer(filament)
+        setMotion()
     }
+
+    func setPath(_ path: CGPath) {
+        tube.path = path
+        filament.path = path
+        tube.shadowPath = path.copy(strokingWithWidth: tube.lineWidth * 1.25, lineCap: .round, lineJoin: .round, miterLimit: 1)
+    }
+
+    func setMotion() {
+        if UIAccessibility.isReduceMotionEnabled {
+            filament.removeAnimation(forKey: "flow")
+            filament.lineDashPattern = nil
+            filament.opacity = 0.7
+        } else {
+            guard filament.animation(forKey: "flow") == nil else { return }
+            filament.lineDashPattern = [NSNumber(value: Double(cycle * 0.58)), NSNumber(value: Double(cycle * 0.42))]
+            filament.opacity = 1
+            let flow = CABasicAnimation(keyPath: "lineDashPhase")
+            flow.fromValue = 0
+            flow.toValue = -cycle
+            flow.duration = 2.15
+            flow.repeatCount = .infinity
+            flow.timingFunction = CAMediaTimingFunction(name: .linear)
+            filament.add(flow, forKey: "flow")
+        }
+    }
+}
+
+final class GlowInkView: UIView {
+    var strokes: [PKStroke] = [] { didSet { refresh() } }
+    var camera: BoardCamera? { didSet { if camera != oldValue { refresh() } } }
+    private let world = CALayer()
+    private var lights: [ObjectIdentifier: LuminousStroke] = [:]
 
     override init(frame: CGRect = .zero) {
         super.init(frame: frame)
         isOpaque = false
         isUserInteractionEnabled = false
-        backgroundColor = .clear
-        contentMode = .redraw
+        layer.addSublayer(world)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateMotion), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        NotificationCenter.default.removeObserver(self, name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
-        if window != nil {
-            NotificationCenter.default.addObserver(self, selector: #selector(updatePulse), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
-        }
-        updatePulse()
-    }
+    override func layoutSubviews() { super.layoutSubviews(); refresh() }
 
-    @objc private func updatePulse() {
-        let key = "haloBreathing"
-        guard window != nil, !strokes.isEmpty, !UIAccessibility.isReduceMotionEnabled else {
-            layer.removeAnimation(forKey: key)
-            return
-        }
-        guard layer.animation(forKey: key) == nil else { return }
-        let pulse = CABasicAnimation(keyPath: "opacity")
-        pulse.fromValue = 1
-        pulse.toValue = 0.79
-        pulse.duration = 1.65
-        pulse.autoreverses = true
-        pulse.repeatCount = .infinity
-        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        layer.add(pulse, forKey: key)
-    }
+    @objc private func updateMotion() { lights.values.forEach { $0.setMotion() } }
 
-    override func draw(_ rect: CGRect) {
-        guard !strokes.isEmpty, let context = UIGraphicsGetCurrentContext() else { return }
-        if let camera { context.concatenate(camera.projection) }
-        GlowInk.paint(strokes, in: context, visible: context.boundingBoxOfClipPath)
+    private func refresh() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        world.setAffineTransform(camera?.projection ?? .identity)
+        let visible = camera?.visibleWorld ?? bounds
+        var next: [ObjectIdentifier: LuminousStroke] = [:]
+        for stroke in strokes where stroke.renderBounds.insetBy(dx: -24, dy: -24).intersects(visible) {
+            let key = ObjectIdentifier(stroke as PKStrokeReference)
+            if let existing = lights[key] { next[key] = existing; continue }
+            guard let first = stroke.path.first else { continue }
+            let path = CGMutablePath()
+            let ranges = stroke.mask == nil ? [CGFloat(0)...CGFloat(stroke.path.count - 1)] : stroke.maskedPathRanges
+            for range in ranges {
+                let start = stroke.path.interpolatedLocation(at: range.lowerBound).applying(stroke.transform)
+                path.move(to: start)
+                if range.lowerBound == range.upperBound {
+                    path.addLine(to: CGPoint(x: start.x + 0.01, y: start.y))
+                } else {
+                    for point in stroke.path.interpolatedPoints(in: range, by: .parametricStep(0.5)) {
+                        path.addLine(to: point.location.applying(stroke.transform))
+                    }
+                    path.addLine(to: stroke.path.interpolatedLocation(at: range.upperBound).applying(stroke.transform))
+                }
+            }
+            let light = LuminousStroke(color: stroke.ink.color, width: first.size.width * hypot(stroke.transform.a, stroke.transform.b))
+            light.setPath(path)
+            world.addSublayer(light.tube)
+            next[key] = light
+        }
+        for (key, light) in lights where next[key] == nil { light.tube.removeFromSuperlayer() }
+        lights = next
     }
 }
 
@@ -120,18 +181,13 @@ final class CloudInkCanvas: PKCanvasView {
         finished.forEach{$0.1.removeFromSuperlayer()}
     }
     private let tip = CAGradientLayer()
-    private let activeHalo = CAShapeLayer()
+    private var liveLight: LuminousStroke?
+    private var liveWidth: CGFloat = 0
     private let activePath = UIBezierPath()
     private var tint: UIColor?
 
     func configureCloud(_ color: UIColor?, width: CGFloat) {
         if tip.superlayer == nil, color != nil {
-            activeHalo.fillColor = nil
-            activeHalo.lineCap = .round
-            activeHalo.lineJoin = .round
-            activeHalo.zPosition = 9
-            activeHalo.actions = ["path": NSNull(), "hidden": NSNull()]
-            layer.addSublayer(activeHalo)
             tip.type = .radial
             tip.startPoint = CGPoint(x: 0.5, y: 0.5)
             tip.endPoint = CGPoint(x: 1, y: 0.5)
@@ -147,20 +203,24 @@ final class CloudInkCanvas: PKCanvasView {
             clearTip()
             return
         }
-        if tint != color {
+        if tint != color || liveWidth != width {
+            liveWidth = width
+            liveLight?.tube.removeFromSuperlayer()
+            let light = LuminousStroke(color: color, width: width)
+            light.tube.zPosition = 9
+            layer.addSublayer(light.tube)
+            liveLight = light
             tint = color
             tip.colors = [UIColor.white.withAlphaComponent(0.85).cgColor, color.withAlphaComponent(0.76).cgColor,
                           color.withAlphaComponent(0.31).cgColor, color.withAlphaComponent(0).cgColor]
-            activeHalo.strokeColor = color.withAlphaComponent(0.19).cgColor
         }
-        let diameter = max(4, min(18, width * 2.4 + 2))
+        let diameter = max(12, min(32, width * 3 + 6))
         tip.bounds = CGRect(x: 0, y: 0, width: diameter, height: diameter)
-        activeHalo.lineWidth = width + min(4, max(1, width))
     }
 
     private func clearTip() {
         tip.isHidden = true
-        activeHalo.path = nil
+        liveLight?.tube.isHidden = true
         activePath.removeAllPoints()
     }
 
@@ -175,9 +235,19 @@ final class CloudInkCanvas: PKCanvasView {
             } else {
                 activePath.addLine(to: point)
             }
-            activeHalo.path = activePath.cgPath
+            liveLight?.tube.isHidden = false
+            liveLight?.setPath(activePath.cgPath)
             tip.position = point
             tip.isHidden = false
+        case .ended:
+            // Leave a short bridge while PencilKit commits its final geometry.
+            tip.isHidden = true
+            let finished = liveLight
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+                guard let self, self.activePath.isEmpty else { return }
+                finished?.tube.isHidden = true
+            }
+            activePath.removeAllPoints()
         default:
             clearTip()
         }

@@ -36,6 +36,31 @@ final class CanvasTests: XCTestCase {
         XCTAssertEqual(polished.path[1].force,stroke.path[1].force)
     }
 
+    @MainActor func testSavedGlowKeepsMovingWhilePencilIsUp() async throws {
+        try XCTSkipIf(UIAccessibility.isReduceMotionEnabled, "Reduce Motion uses a steady filament.")
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = UIViewController()
+        window.isHidden = false
+        defer { window.isHidden = true }
+        let overlay = GlowInkView(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
+        window.rootViewController?.view.addSubview(overlay)
+        let drawing = PKDrawing(strokes: [inkStroke(at: CGPoint(x: 40, y: 40), color: GlowInk.color(.cyan))])
+        overlay.strokes = GlowInk.strokes(in: try PKDrawing(data: drawing.dataRepresentation()))
+        let tube = try XCTUnwrap(overlay.layer.sublayers?.first?.sublayers?.first as? CAShapeLayer)
+        let filament = try XCTUnwrap(tube.sublayers?.first as? CAShapeLayer)
+        XCTAssertGreaterThan(tube.shadowOpacity, 0.8)
+        CATransaction.flush()
+        try await Task.sleep(nanoseconds: 250_000_000)
+        let first = try XCTUnwrap(filament.presentation()).lineDashPhase
+        try await Task.sleep(nanoseconds: 400_000_000)
+        let second = try XCTUnwrap(filament.presentation()).lineDashPhase
+        XCTAssertGreaterThan(abs(second - first), 1)
+        XCTAssertEqual(filament.animation(forKey: "flow")?.repeatCount, .infinity)
+        overlay.strokes = []
+        XCTAssertNil(tube.superlayer)
+    }
+
     func testGlowInkSurvivesPencilKitSaveAndAddsAHalo() throws {
         let glow = inkStroke(at: CGPoint(x: 40, y: 40), color: GlowInk.color(.systemPurple))
         let pen = inkStroke(at: CGPoint(x: 160, y: 80))

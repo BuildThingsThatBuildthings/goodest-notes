@@ -113,13 +113,14 @@ final class BoardSurface: UIScrollView, CanvasSurface, UIScrollViewDelegate, UIG
         bounces = false
         delaysContentTouches = false
         decelerationRate = .fast
-        for layer in [grid, overlay, glow, inkPreview] { layer.isUserInteractionEnabled = false; addSubview(layer) }
+        for layer in [grid, overlay, inkPreview] { layer.isUserInteractionEnabled = false; addSubview(layer) }
         ink.isScrollEnabled = false
         ink.isOpaque = false
         ink.backgroundColor = .clear
         ink.drawingPolicy = .anyInput
         ink.delegate = self
         addSubview(ink)
+        addSubview(glow)
         addSubview(playback)
         addSubview(inputLayer)
         inputLayer.worldPoint = { [weak self] point in self?.camera.world(point) ?? point }

@@ -113,7 +113,6 @@ final class SheetSurface: UIScrollView, UIScrollViewDelegate, PKCanvasViewDelega
         sheet.addSubview(overlay)
         glow.frame = sheet.bounds
         glow.strokes = GlowInk.strokes(in: drawing)
-        sheet.addSubview(glow)
         ink.frame = sheet.bounds
         ink.isScrollEnabled = false
         ink.isOpaque = false
@@ -121,6 +120,7 @@ final class SheetSurface: UIScrollView, UIScrollViewDelegate, PKCanvasViewDelega
         ink.drawingPolicy = .anyInput
         ink.drawing = drawing
         sheet.addSubview(ink)
+        sheet.addSubview(glow)
         sheet.addSubview(playback)
         ink.delegate = self
         inputLayer.frame = sheet.bounds
