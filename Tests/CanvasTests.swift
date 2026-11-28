@@ -6,6 +6,66 @@ import XCTest
 @testable import Blockbook
 
 final class CanvasTests: XCTestCase {
+    @MainActor func testDuetAddsSecondWriterWithoutReplacingPencilInk() throws {
+        let canvas=CloudInkCanvas()
+        let pencil=inkStroke(at:CGPoint(x:10,y:20),color:.blue)
+        let finger=inkStroke(at:CGPoint(x:50,y:60),color:.red)
+        canvas.drawing=PKDrawing(strokes:[pencil])
+        Instrument.duet.configureInk(canvas,color:.blue,width:3)
+        XCTAssertEqual(canvas.drawingPolicy,.pencilOnly)
+        canvas.finishFinger(finger,preview:CAShapeLayer())
+        let saved=try PKDrawing(data:canvas.drawing.dataRepresentation())
+        XCTAssertEqual(saved.strokes.count,2)
+        XCTAssertEqual(saved.strokes.first?.path.first?.location,pencil.path.first?.location)
+        XCTAssertEqual(saved.strokes.last?.path.first?.location,finger.path.first?.location)
+        Instrument.pen.configureInk(canvas,color:.blue,width:3)
+        XCTAssertEqual(canvas.drawingPolicy,.anyInput)
+    }
+
+    func testPolishingKeepsOriginalInkAndStrokeEndpoints() throws {
+        let points = [CGPoint(x:0,y:0),CGPoint(x:5,y:2),CGPoint(x:10,y:0)].enumerated().map { i, p in
+            PKStrokePoint(location:p,timeOffset:Double(i)/60,size:CGSize(width:2,height:2),
+                          opacity:1,force:0.6,azimuth:0,altitude:1)
+        }
+        let stroke = PKStroke(ink:PKInk(.pen,color:.blue),path:PKStrokePath(controlPoints:points,creationDate:Date()))
+        let polished = try XCTUnwrap(HandwritingSmoothing.drawing([stroke],strength:1).strokes.first)
+        XCTAssertEqual(polished.path[0].location,stroke.path[0].location)
+        XCTAssertEqual(polished.path[2].location,stroke.path[2].location)
+        XCTAssertLessThan(polished.path[1].location.y,stroke.path[1].location.y)
+        XCTAssertEqual(stroke.path[1].location,points[1].location)
+        XCTAssertEqual(polished.path[1].force,stroke.path[1].force)
+    }
+
+    @MainActor func testSavedGlowBreathesAcrossWholeStroke() async throws {
+        try XCTSkipIf(UIAccessibility.isReduceMotionEnabled, "Reduce Motion keeps the cloud steady.")
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = UIViewController()
+        window.isHidden = false
+        defer { window.isHidden = true }
+        let overlay = GlowInkView(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
+        window.rootViewController?.view.addSubview(overlay)
+        let drawing = PKDrawing(strokes: [inkStroke(at: CGPoint(x: 40, y: 40), color: GlowInk.color(.cyan))])
+        overlay.strokes = GlowInk.strokes(in: try PKDrawing(data: drawing.dataRepresentation()))
+        let tube = try XCTUnwrap(overlay.layer.sublayers?.first?.sublayers?.first as? CAShapeLayer)
+        let cloud = try XCTUnwrap(tube.sublayers?.first as? CAShapeLayer)
+        XCTAssertNil(cloud.lineDashPattern)
+        XCTAssertEqual(cloud.path, tube.path)
+        XCTAssertNotNil(cloud.shadowPath)
+        XCTAssertEqual(cloud.animation(forKey: "breath")?.repeatCount, .infinity)
+        CATransaction.flush()
+        var radii: [CGFloat] = []
+        for _ in 0..<5 {
+            try await Task.sleep(nanoseconds: 250_000_000)
+            let frame = try XCTUnwrap(cloud.presentation())
+            XCTAssertGreaterThan(frame.shadowOpacity, 0.5)
+            radii.append(frame.shadowRadius)
+        }
+        XCTAssertGreaterThan(radii.max()! - radii.min()!, 0.08)
+        overlay.strokes = []
+        XCTAssertNil(tube.superlayer)
+    }
+
     func testGlowInkSurvivesPencilKitSaveAndAddsAHalo() throws {
         let glow = inkStroke(at: CGPoint(x: 40, y: 40), color: GlowInk.color(.systemPurple))
         let pen = inkStroke(at: CGPoint(x: 160, y: 80))

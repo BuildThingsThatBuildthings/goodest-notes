@@ -1,16 +1,18 @@
+import {councilTeam} from './council.mjs';
+import {canvasTeam,canvasMark,canvasSnapshot} from './canvas.mjs';
 import {state} from './hosted.mjs';
 import {randomUUID} from 'node:crypto';
 import {digest,scope} from './auth.mjs';
 import {canonicalJSON} from './json.mjs';
 import {one,many,requireThat,string,uuid} from './db.mjs';
-import {models,team,month,limit} from './models.mjs';
+import {models,team,month,providers,monthlyLimit} from './models.mjs';
 
 export async function accounts(c) {
   const rows=await many(c,'SELECT provider, COALESCE(sum(charged),0) spent, COALESCE(sum(reserved) FILTER (WHERE charged IS NULL),0) reserved FROM spend WHERE month=$1 GROUP BY provider',[month()]);
-  return ['openai','anthropic'].map(provider=>{
+  return providers.map(provider=>{
     const row=rows.find(r=>r.provider===provider);
     const spent=Number(row?.spent||0), reserved=Number(row?.reserved||0);
-    return {provider,spent:spent/1e6,reserved:reserved/1e6,remaining:(limit-spent-reserved)/1e6};
+    return {provider,spent:spent/1e6,reserved:reserved/1e6,remaining:(monthlyLimit(provider)-spent-reserved)/1e6};
   });
 }
 
@@ -82,6 +84,16 @@ export async function action(c,who,op,args) {
   if(op==='read_conversation') return {messages:await many(c,'SELECT * FROM messages WHERE project=$1 AND seq>$2 ORDER BY seq LIMIT 200',[p,Number(args.after)||0]),tasks:await many(c,'SELECT id,brief,anchor,state,stage,models FROM tasks WHERE project=$1 ORDER BY created DESC LIMIT 50',[p])};
   return replay(c,who,p,uuid(args.request_id),args,async()=>{
     if(op==='post_message') return message(c,p,who.name,args.text,args.anchor,args.reply);
+    if(op==='add_canvas_object'||op==='edit_canvas_object'){
+      const page=uuid(args.page);
+      requireThat(await one(c,'SELECT 1 FROM members WHERE project=$1 AND record=$2',[p,'page:'+page]),'Unknown shared page',404);
+      const updating=op==='edit_canvas_object',id=updating?uuid(args.object):randomUUID();
+      const mark=canvasMark(page,id,who.name,args);
+      if(updating){requireThat(await one(c,"SELECT 1 FROM records r JOIN members m ON m.record=r.id WHERE m.project=$1 AND r.id=$2 AND r.body->>'page'=$3",[p,mark.id,page]),'Unknown canvas object',404);mark.base=args.revision;}
+      const result=await edit(c,{owner:true,name:who.name},p,mark);
+      await message(c,p,who.name,(result.conflict?'Preserved conflicting edit':updating?'Updated':'Added')+' '+args.kind+' · '+args.title);
+      return result;
+    }
     if(op==='edit_note') return edit(c,who,p,{id:args.record,kind:'note',body:{text:args.text},base:args.revision});
     if(op==='sync') {
       requireThat(who.owner && Array.isArray(args.changes) && args.changes.length<=10000,'Invalid sync',403);
@@ -101,13 +113,14 @@ export async function action(c,who,op,args) {
       const state=who.owner?'queued':'awaiting_owner';
       const match=/^goodestnotes:\/\/paper\/[0-9a-f-]{36}\/page\/([0-9a-f-]{36})(?:\?|$)/i.exec(args.anchor || '');
       const target=match && await one(c,"SELECT r.id,r.rev FROM records r JOIN members m ON m.record=r.id WHERE m.project=$1 AND r.id=$2 AND r.kind='note'",[p,'note:'+match[1].toLowerCase()]);
-      await c.query('INSERT INTO tasks(id,project,brief,anchor,state,models,target,base) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id,p,brief,args.anchor||null,state,JSON.stringify(team(main)),target?.id,target?.rev]);
+      if(args.agents)requireThat(target&&await one(c,'SELECT 1 FROM members WHERE project=$1 AND record=$2',[p,'page:'+match[1].toLowerCase()]),'Select a shared page',400);
+      await c.query('INSERT INTO tasks(id,project,brief,anchor,state,models,target,base,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[id,p,brief,args.anchor||null,state,JSON.stringify(args.agents?councilTeam(canvasTeam(args.agents),main):team(main)),args.agents?'council:'+match[1].toLowerCase():target?.id,target?.rev,args.agents?canvasSnapshot(args.snapshot):null]);
       await message(c,p,who.name,brief,args.anchor,null,id);return {id,state};
     }
     if(op==='control_task'){
       requireThat(who.owner && ['pause','resume','cancel'].includes(args.command),'Owner task control required',403);
       const state={pause:'paused',resume:'queued',cancel:'cancelled'}[args.command];
-      const task=await one(c,"UPDATE tasks SET state=$1 WHERE id=$2 AND project=$3 AND state NOT IN ('completed','cancelled') RETURNING id,state",[state,uuid(args.task),p]);
+      const task=await one(c,"UPDATE tasks SET state=$1 WHERE id=$2 AND project=$3 AND state NOT IN ('completed','cancelled','needs_review') RETURNING id,state",[state,uuid(args.task),p]);
       requireThat(task,'Task is already closed',409);return task;
     }
     throw Object.assign(new Error('Unknown operation'),{status:404});

@@ -18,10 +18,20 @@ struct PaperEditor: View {
     let paperID: UUID
     @State var selectedPage: UUID?
     @State private var sketch: SketchSelection?
+    @State private var polishing = false
+    @State private var polishSelection: SketchSelection?
     @State private var playing: UUID?
     @State private var conversation: Project?
     @State private var instrument: Instrument = .pen
-    @State private var color = UIColor(red: 0.10, green: 0.15, blue: 0.23, alpha: 1)
+    @State private var standardColor = UIColor(red: 0.10, green: 0.15, blue: 0.23, alpha: 1)
+    @State private var glowColor = UIColor(red: 0.07, green: 0.79, blue: 0.96, alpha: 1)
+    private var color: UIColor {
+        get { instrument == .glowPen ? glowColor : standardColor }
+        nonmutating set {
+            if instrument == .glowPen { glowColor = newValue } else { standardColor = newValue }
+        }
+    }
+    @State private var inkPalette = false
     @State private var width: CGFloat = 3
     @State private var magnifierTarget: CGPoint?
     @StateObject private var actions = SurfaceActions()
@@ -74,7 +84,8 @@ struct PaperEditor: View {
                     .accessibilityValue(playing == nil ? "Paused" : "Playing")
                     }
                 }
-                if instrument == .motion { Text("Lasso the ink you want to bring to life.").font(.footnote) }
+                if instrument == .motion { Text(polishing ? "Lasso the handwriting to polish." : "Lasso the ink you want to bring to life.").font(.footnote) }
+                if instrument == .duet { Text("Draw together · Pencil uses the ink swatch · Finger uses coral").font(.footnote) }
                 if instrument == .capture { Text("Drag a box around the part you want to reuse.").font(.footnote).padding(6) }
                 if !teaching && instrument == .objects { itemBar(page: page) }
                 paperCanvas(paper: paper, page: page)
@@ -99,6 +110,18 @@ struct PaperEditor: View {
             .sheet(item:$sketch) { source in SketchStudio(source:source,folder:studio.assetFolder) { result in
                 if studio.editPage(paperID,page.id,{ sheet in var list=sheet.teachingVisuals;list.append(result);sheet.savedVisuals=list;sheet.visual=result }) { playing=result.id; instrument = .pen }
             } }
+            .sheet(item: $polishSelection) { source in
+                HandwritingPolisher(source: source) { drawing in
+                    var copy = SheetPage()
+                    copy.size = page.size; copy.pdfIndex = page.pdfIndex
+                    guard let paperIndex = studio.library.papers.firstIndex(where: { $0.id == paperID }),
+                          let pageIndex = studio.library.papers[paperIndex].pages.firstIndex(where: { $0.id == page.id }),
+                          studio.change({ $0.papers[paperIndex].pages.insert(copy, at: pageIndex+1) }) else { return }
+                    studio.saveInk(drawing, paperID: paperID, pageID: copy.id)
+                    selectedPage = copy.id; instrument = .pen; polishing = false
+                    polishSelection = nil
+                }
+            }
             .sheet(item: $draft) { BlockEditor($0) }
             .sheet(item: $panel) { item in
                 TextPanelView(panel: item) { notes in
@@ -220,6 +243,9 @@ struct PaperEditor: View {
                 addMenu(paper, page: page)
                 Menu {
                     Button("Teach", systemImage: "play.display") { presenting = true }
+                    Button("Polish handwriting", systemImage: "pencil.and.outline") {
+                        magnifierTarget = nil; polishing = true; instrument = .motion
+                    }
                     Button("Recognize handwriting", systemImage: "text.viewfinder") { read(page, paper: paper, summarize: false) }
                     Button("Summarize page", systemImage: "text.quote") { read(page, paper: paper, summarize: true) }
                     Button(paper.kind == .whiteboard ? "Canvas notes" : "Page notes", systemImage: "note.text") { panel = TextPanel(mode: .notes, title: paper.kind == .whiteboard ? "Canvas notes" : "Page notes", text: page.typed, draftID: page.id) }
@@ -258,8 +284,9 @@ struct PaperEditor: View {
             moveItem: { move($0, to: $1, page: page) },
             visual: page.teachingVisuals.first(where:{$0.id==playing}),
             lasso: { polygon in
-                do { sketch = try SketchSelection(polygon:polygon,studio:studio,paper:paper,page:page)
-                    if sketch == nil { studio.issue="Draw around the ink strokes you want to animate." }
+                do { let selection = try SketchSelection(polygon:polygon,studio:studio,paper:paper,page:page)
+                    if polishing { polishSelection = selection } else { sketch = selection }
+                    if selection == nil { studio.issue="Draw around the ink strokes you want to select." }
                 } catch { studio.issue=error.localizedDescription }
             },
             capture: { capture(page, paper: paper, rect: $0, entirePage: false) }
@@ -287,8 +314,9 @@ struct PaperEditor: View {
 
     private func writingToolbar(paper: Paper, page: SheetPage) -> some View {
         HStack(spacing: 3) {
-            ForEach(teaching ? [Instrument.laser,.pen,.glowPen,.marker,.eraser,.pan,.motion] : [.objects,.pen,.glowPen,.marker,.eraser,.select,.pan,.capture,.motion], id: \.self) { item in
+            ForEach(teaching ? [Instrument.laser,.pen,.duet,.glowPen,.marker,.eraser,.pan,.motion] : [.objects,.pen,.duet,.glowPen,.marker,.eraser,.select,.pan,.capture,.motion], id: \.self) { item in
                 Button {
+                    polishing = false
                     instrument = item
                     if !item.editsInk { magnifierTarget = nil }
                     if item != .objects { connectFrom = nil; selectedItem = nil }
@@ -298,11 +326,25 @@ struct PaperEditor: View {
                 }.accessibilityLabel(toolLabel(item))
             }
             Divider().frame(height: 24)
-            Menu {
-                ForEach(0..<colors.count, id: \.self) { i in Button(colors[i].0) { color = colors[i].1 } }
-                Divider()
-                ForEach([CGFloat(2),4,7], id: \.self) { w in Button("\(Int(w)) pt") { width = w } }
-            } label: { Circle().fill(Color(uiColor: color)).frame(width: 20,height: 20).frame(width: 42,height: 42) }.accessibilityLabel("Ink color and width")
+            Button { inkPalette.toggle() } label: {
+                Circle().fill(Color(uiColor: color)).overlay(Circle().stroke(.secondary, lineWidth: 1))
+                    .frame(width: 22, height: 22).frame(width: 44, height: 44)
+            }.accessibilityLabel("Ink color and width")
+            .popover(isPresented: $inkPalette) {
+                VStack(alignment: .leading, spacing: 16) {
+                    ColorPicker("Ink color", selection: Binding(get: { Color(uiColor: color) },
+                        set: { color = UIColor($0) }), supportsOpacity: false)
+                    HStack {
+                        ForEach(0..<colors.count, id: \.self) { i in
+                            Button { color = colors[i].1 } label: {
+                                Circle().fill(Color(uiColor: colors[i].1)).frame(width: 29,height: 29)
+                            }.accessibilityLabel(colors[i].0)
+                        }
+                    }
+                    Text("Stroke width  \(width, specifier: "%.1f") pt")
+                    Slider(value: $width, in: 1...14, step: 0.5).accessibilityLabel("Stroke width")
+                }.padding(20).frame(width: 300)
+            }
             Spacer()
             Button { actions.undo() } label: { Image(systemName: "arrow.uturn.backward").frame(width: 33,height: 42) }.accessibilityLabel("Undo")
             Button { actions.redo() } label: { Image(systemName: "arrow.uturn.forward").frame(width: 33,height: 42) }.accessibilityLabel("Redo")
@@ -321,6 +363,7 @@ struct PaperEditor: View {
         case .capture: "Draw a box to capture a block"
         case .objects: "Select or move objects"
         case .pan: "Pan canvas"
+        case .duet: "Draw together"
         case .glowPen: "Glow pen"
         default: tool.rawValue.capitalized
         }

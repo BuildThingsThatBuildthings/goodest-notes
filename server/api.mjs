@@ -1,8 +1,9 @@
+import {readText} from './request.mjs';
 import {createHash,randomBytes,randomUUID} from 'node:crypto';
 import {actor,scope,oauth,origin,digest,register,clientLabel} from './auth.mjs';
 import {transaction,one,many,uuid,string,requireThat} from './db.mjs';
 import {action,accounts} from './workspace.mjs';
-import {models} from './models.mjs';
+import {models,providers} from './models.mjs';
 import {hosted,state} from './hosted.mjs';
 import {token} from './worker.mjs';
 
@@ -14,12 +15,14 @@ const tools=[
   tool('read_asset','Read one chunk of a project attachment by its asset record ID. Chunks use base64 and SHA-256.',{project:id,record:str,index:integer},['project','record','index'],true),
   tool('read_conversation','Read human and agent messages after a sequence number and list assigned work.',{project:id,after:integer},['project'],true),
   tool('post_message','Post a project handoff or reply. Reuse request_id on retry.',{project:id,request_id:id,text:str,anchor:str,reply:id},['project','request_id','text']),
+  tool('edit_canvas_object','Update a shared agent object at its observed revision. A stale edit is retained as a conflict.',{project:id,page:id,object:id,revision:integer,request_id:id,kind:{type:'string',enum:['text','rectangle','ellipse','diamond','note']},title:str,x:{type:'number'},y:{type:'number'}},['project','page','object','revision','request_id','kind','title','x','y']),
+  tool('add_canvas_object','Place an attributed editable object on a shared page using page coordinates.',{project:id,page:id,request_id:id,kind:{type:'string',enum:['text','rectangle','ellipse','diamond','note']},title:str,x:{type:'number'},y:{type:'number'}},['project','page','request_id','kind','title','x','y']),
   tool('edit_note','Edit the text of a shared note using the revision returned by read_space.',{project:id,request_id:id,record:str,revision:integer,text:str},['project','request_id','record','revision','text']),
   tool('assign_task','Propose an assignment to the owner. Paid work starts on owner confirmation.',{project:id,request_id:id,text:str,anchor:str},['project','request_id','text'])
 ];
 const json=(data,status=200,extra={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store',...extra}});
 async function body(req){
-  const data=await req.text();requireThat(Buffer.byteLength(data)<4500000,'Payload too large',413);
+  const data=await readText(req,4499999);
   try{return JSON.parse(data);}catch{throw Object.assign(new Error('Invalid JSON'),{status:400});}
 }
 async function projects(c,who) {
@@ -43,8 +46,14 @@ async function mcp(req,c,who){
 }
 async function capabilities(){
   const available={};
-  for(const provider of ['openai','anthropic']){
+  for(const provider of providers){
     if(!token(provider)){available[provider]={configured:false,models:[]};continue;}
+    if(provider==='google'||provider==='xai'){
+      const google=provider==='google',model=google?'gemini-4-neon':'grok-4.7';
+      const url=google?'https://generativelanguage.googleapis.com/v1beta/models/'+model:'https://api.x.ai/v1/models/'+model;
+      const response=await fetch(url,{headers:google?{'x-goog-api-key':token(provider)}:{Authorization:'Bearer '+token(provider)},signal:AbortSignal.timeout(7000)});
+      available[provider]={configured:true,status:response.status,models:response.ok?[model]:[]};continue;
+    }
     const open=provider==='openai';
     const r=await fetch(open?'https://api.openai.com/v1/models':'https://api.anthropic.com/v1/models?limit=100',{headers:open?{Authorization:'Bearer '+token(provider)}:{'x-api-key':token(provider),'anthropic-version':'2023-06-01'},signal:AbortSignal.timeout(7000)});
     available[provider]={configured:true,status:r.status,models:r.ok?(await r.json()).data.map(m=>m.id).filter(m=>models[m]||m.startsWith('gpt-image-')):[]};
@@ -52,7 +61,8 @@ async function capabilities(){
   return available;
 }
 const storage=run=>hosted()?run({hosted:true}):transaction(run);
-export async function handle(req) {
+export async function handle(req,{onQueued}={}) {
+  let wakeWorker=false;
   const path=new URL(req.url).pathname;
   try{
     if(path==='/register' && req.method==='POST')return json(register(await body(req)),201);
@@ -71,14 +81,14 @@ export async function handle(req) {
       return json(await capabilities());
     }
     if(path==='/v1/visual') { const a=await storage(c=>actor(req,c));requireThat(a.owner,'Owner required',403);const {visual}=await import('./visual.mjs');return json(await visual(await body(req))); }
-    return await storage(async c=>{
+    const response=await storage(async c=>{
       if(path==='/authorize'||path==='/token'||path==='/revoke'){const result=await oauth(req,path,c);return result instanceof Response?result:json(result);}
       const who=await actor(req,c);
       if(who.device){
         if(path==='/v1/settings'&&req.method==='GET')return json({role:'device',project:who.project,models:[],accounts:[],providers:{}});
         if(path==='/v1/projects'&&req.method==='GET')return json(await projects(c,who));
         if(path==='/v1/action'&&req.method==='POST'){
-          const d=await body(req);requireThat(['read_space','read_asset','read_conversation','post_message','edit_note'].includes(d.op),'A workspace owner must approve this action',403);return json(await action(c,who,d.op,d.args));
+          const d=await body(req);requireThat(['read_space','read_asset','read_conversation','post_message','edit_note','assign_task'].includes(d.op),'A workspace owner must approve this action',403);return json(await action(c,who,d.op,d.args));
         }
         throw Object.assign(new Error('Project-scoped device credential'),{status:403});
       }
@@ -115,15 +125,21 @@ export async function handle(req) {
         for(const p of d.projects)await c.query('INSERT INTO projects(id,title,catalog_id) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET title=EXCLUDED.title,catalog_id=EXCLUDED.catalog_id',[uuid(p.id),string(p.title,200),string(p.externalID,256)]);
         return json({count:d.projects.length});
       }
-      if(path==='/v1/action' && req.method==='POST'){const d=await body(req);return json(await action(c,who,d.op,d.args));}
+      if(path==='/v1/action' && req.method==='POST'){
+        const d=await body(req),result=await action(c,who,d.op,d.args);
+        wakeWorker=(d.op==='assign_task'||d.op==='control_task')&&result.state==='queued';
+        return json(result);
+      }
       if(path==='/v1/settings'){
-        if(c.hosted){const data=await state('settings',req.method==='POST'?await body(req):{});return json({...data,providers:{openai:Boolean(token('openai')),anthropic:Boolean(token('anthropic'))}});}
+        if(c.hosted){const data=await state('settings',req.method==='POST'?await body(req):{});return json({...data,providers:Object.fromEntries(providers.map(p=>[p,Boolean(token(p))]))});}
         if(req.method==='POST'){const d=await body(req);requireThat(Object.hasOwn(models,d.main),'Unsupported model');await c.query('UPDATE settings SET main=$1 WHERE id=1',[d.main]);}
-        return json({main:(await one(c,'SELECT main FROM settings WHERE id=1')).main,models:Object.keys(models),accounts:await accounts(c),providers:{openai:Boolean(token('openai')),anthropic:Boolean(token('anthropic'))}});
+        return json({main:(await one(c,'SELECT main FROM settings WHERE id=1')).main,models:Object.keys(models),accounts:await accounts(c),providers:Object.fromEntries(providers.map(p=>[p,Boolean(token(p))]))});
       }
       if(path==='/v1/rules' && req.method==='POST'){const d=await body(req);if(c.hosted)return json(await state('rules',d));requireThat(typeof d.rules==='string'&&d.rules.length<=8000,'Invalid rules');return json(await one(c,'UPDATE projects SET rules=$1 WHERE id=$2 RETURNING *',[d.rules,uuid(d.project)]));}
       if(path==='/v1/grants'){if(c.hosted)return json((await state('grants',req.method==='POST'?await body(req):{})).map(g=>({...g,client:clientLabel(g.client)})));if(req.method==='POST'){const d=await body(req);await c.query('UPDATE grants SET revoked=true WHERE id=$1',[uuid(d.id)]);}return json((await many(c,'SELECT id,client,project,revoked FROM grants ORDER BY client')).map(g=>({...g,client:clientLabel(g.client)})));}
       throw Object.assign(new Error('Unknown route'),{status:404});
     });
+    if(wakeWorker)onQueued?.();
+    return response;
   }catch(e){return json({error:e.status?e.message:'Workspace service unavailable'},e.status||503,e.status===401?{'WWW-Authenticate':'Bearer resource_metadata="'+origin()+'/.well-known/oauth-protected-resource"'}:{});}
 }

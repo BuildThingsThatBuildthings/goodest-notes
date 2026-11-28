@@ -111,7 +111,7 @@ final class WritingLensSurface: UIView, PKCanvasViewDelegate {
     private let backdrop: LensPaper
     private let overlay = CanvasOverlay()
     private let glow = GlowInkView()
-    private let ink = PKCanvasView()
+    private let ink = CloudInkCanvas()
     private var target = CGPoint.zero
     private var zoom: CGFloat = 2
     private var inkWindow: BoardInkWindow?
@@ -136,7 +136,7 @@ final class WritingLensSurface: UIView, PKCanvasViewDelegate {
         ink.drawingPolicy = .anyInput
         ink.delegate = self
         ink.accessibilityLabel = "Magnified writing area"
-        [backdrop, overlay, glow, ink].forEach(addSubview)
+        [backdrop, overlay, ink, glow].forEach(addSubview)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -157,7 +157,7 @@ final class WritingLensSurface: UIView, PKCanvasViewDelegate {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        for view in [backdrop, overlay, glow, ink] { view.frame = bounds }
+        for view in [backdrop, overlay, ink, glow] { view.frame = bounds }
         refresh()
     }
 

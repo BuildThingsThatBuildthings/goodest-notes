@@ -5,3 +5,10 @@
   node_bundler = "esbuild"
   external_node_modules = ["@echogarden/flite-wasi"]
   included_files = ["node_modules/@echogarden/flite-wasi/flite.wasm"]
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"

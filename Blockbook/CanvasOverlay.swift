@@ -32,9 +32,9 @@ extension CanvasItem {
         ]
         if glow == true {
             let shadow = NSShadow()
-            shadow.shadowColor = tint.halo
+            shadow.shadowColor = tint.halo.withAlphaComponent(0.70)
             shadow.shadowOffset = .zero
-            shadow.shadowBlurRadius = kind == .text ? 10 : 6
+            shadow.shadowBlurRadius = kind == .text ? 3.5 : 2.5
             attributes[.shadow] = shadow
         }
         return attributes
@@ -237,7 +237,11 @@ private final class CanvasCard: UIView {
         self.item = item
         self.selected = selected
         self.compact = compact
-        title.attributedText = NSAttributedString(string: item.title, attributes: item.titleAttributes)
+        let label=NSMutableAttributedString(string:item.title,attributes:item.titleAttributes)
+        if let author=item.agentAuthor {
+            label.append(NSAttributedString(string:"  · "+displayModel(author),attributes:[.font:UIFont.systemFont(ofSize:11,weight:.medium),.foregroundColor:UIColor.secondaryLabel]))
+        }
+        title.attributedText=label
         title.adjustsFontSizeToFitWidth = item.kind == .text
         title.minimumScaleFactor = 0.45
         if !item.markdown.isEmpty, let formatted = try? AttributedString(markdown: item.markdown, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {

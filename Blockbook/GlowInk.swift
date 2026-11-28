@@ -7,12 +7,7 @@ enum GlowInk {
     private static let glowAlpha: CGFloat = 240.0 / 255.0
 
     static func color(_ selected: UIColor) -> UIColor {
-        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
-        if selected.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha),
-           saturation > 0.3, brightness > 0.35 {
-            return UIColor(hue: hue, saturation: max(saturation, 0.82), brightness: 0.86, alpha: glowAlpha)
-        }
-        return UIColor(red: 0.45, green: 0.20, blue: 0.92, alpha: glowAlpha)
+        selected.withAlphaComponent(glowAlpha)
     }
 
     static func strokes(in drawing: PKDrawing) -> [PKStroke] {
@@ -26,18 +21,18 @@ enum GlowInk {
         context.setLineCap(.round)
         context.setLineJoin(.round)
         defer { context.restoreGState() }
-        let layers: [(CGFloat, CGFloat)] = [(3.6, 0.07), (2.8, 0.10), (2.0, 0.15), (1.45, 0.22)]
+        let layers: [(CGFloat, CGFloat)] = [(1.6, 0.07), (0.95, 0.12), (0.42, 0.22)]
         for stroke in strokes where stroke.renderBounds.insetBy(dx: -35, dy: -35).intersects(visible) {
             guard let first = stroke.path.first else { continue }
             let center = first.location.applying(stroke.transform)
             let path = CGMutablePath()
             path.move(to: center)
-            for point in stroke.path.dropFirst() { path.addLine(to: point.location.applying(stroke.transform)) }
+            for point in stroke.path.interpolatedPoints(by: .parametricStep(0.5)) { path.addLine(to: point.location.applying(stroke.transform)) }
             if stroke.path.count == 1 { path.addLine(to: CGPoint(x: center.x + 0.1, y: center.y)) }
             let width = max(1, first.size.width * hypot(stroke.transform.a, stroke.transform.b))
             for (spread, opacity) in layers {
                 context.addPath(path)
-                context.setLineWidth(width * spread)
+                context.setLineWidth(width + min(4, max(1, width)) * spread)
                 context.setStrokeColor(stroke.ink.color.withAlphaComponent(opacity).cgColor)
                 context.strokePath()
             }
@@ -45,25 +40,271 @@ enum GlowInk {
     }
 }
 
-final class GlowInkView: UIView {
-    var strokes: [PKStroke] = [] { didSet { setNeedsDisplay() } }
-    var camera: BoardCamera? {
-        didSet { if camera != oldValue, !strokes.isEmpty { setNeedsDisplay() } }
+// A close bloom defines the writing; a second, softer bloom breathes across
+// the entire silhouette. Both the live preview and committed ink use this layer.
+private final class LuminousStroke {
+    let tube = CAShapeLayer()
+    private let cloud = CAShapeLayer()
+
+    init(color: UIColor, width: CGFloat) {
+        let w = max(0.9, width)
+        for shape in [tube, cloud] {
+            shape.fillColor = nil
+            shape.lineCap = .round
+            shape.lineJoin = .round
+            shape.shadowColor = color.cgColor
+            shape.shadowOffset = .zero
+            shape.actions = ["path": NSNull(), "shadowPath": NSNull(), "hidden": NSNull()]
+        }
+        tube.strokeColor = color.withAlphaComponent(0.86).cgColor
+        tube.lineWidth = w
+        tube.shadowOpacity = 0.82
+        tube.shadowRadius = min(5, max(1.3, w * 0.6))
+        cloud.strokeColor = UIColor.white.withAlphaComponent(0.32).cgColor
+        cloud.lineWidth = w * 0.65
+        cloud.shadowRadius = min(12, max(3, w * 1.55))
+        cloud.shadowOpacity = 0.78
+        tube.addSublayer(cloud)
+        setMotion()
     }
+
+    func setPath(_ path: CGPath) {
+        tube.path = path
+        cloud.path = path
+        tube.shadowPath = path.copy(strokingWithWidth: tube.lineWidth * 1.5, lineCap: .round, lineJoin: .round, miterLimit: 1)
+        cloud.shadowPath = path.copy(strokingWithWidth: tube.lineWidth * 2.4, lineCap: .round, lineJoin: .round, miterLimit: 1)
+    }
+
+    func setMotion() {
+        if UIAccessibility.isReduceMotionEnabled {
+            cloud.removeAnimation(forKey: "breath")
+            return
+        }
+        guard cloud.animation(forKey: "breath") == nil else { return }
+        let spread = CABasicAnimation(keyPath: "shadowRadius")
+        spread.fromValue = cloud.shadowRadius * 0.8
+        spread.toValue = cloud.shadowRadius * 1.3
+        let strength = CABasicAnimation(keyPath: "shadowOpacity")
+        strength.fromValue = 0.62
+        strength.toValue = 0.94
+        let breath = CAAnimationGroup()
+        breath.duration = 2.1
+        for animation in [spread, strength] {
+            animation.duration = breath.duration
+            animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        }
+        breath.animations = [spread, strength]
+        breath.autoreverses = true
+        breath.repeatCount = .infinity
+        // Match phases when PencilKit hands the live stroke to the saved layer.
+        let period = breath.duration * 2
+        let now = CACurrentMediaTime()
+        breath.beginTime = now - now.truncatingRemainder(dividingBy: period)
+        cloud.add(breath, forKey: "breath")
+    }
+}
+
+final class GlowInkView: UIView {
+    var strokes: [PKStroke] = [] { didSet { refresh() } }
+    var camera: BoardCamera? { didSet { if camera != oldValue { refresh() } } }
+    private let world = CALayer()
+    private var lights: [ObjectIdentifier: LuminousStroke] = [:]
 
     override init(frame: CGRect = .zero) {
         super.init(frame: frame)
         isOpaque = false
         isUserInteractionEnabled = false
-        backgroundColor = .clear
-        contentMode = .redraw
+        layer.addSublayer(world)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateMotion), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    override func draw(_ rect: CGRect) {
-        guard !strokes.isEmpty, let context = UIGraphicsGetCurrentContext() else { return }
-        if let camera { context.concatenate(camera.projection) }
-        GlowInk.paint(strokes, in: context, visible: context.boundingBoxOfClipPath)
+    override func layoutSubviews() { super.layoutSubviews(); refresh() }
+
+    @objc private func updateMotion() { lights.values.forEach { $0.setMotion() } }
+
+    private func refresh() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        world.setAffineTransform(camera?.projection ?? .identity)
+        let visible = camera?.visibleWorld ?? bounds
+        var next: [ObjectIdentifier: LuminousStroke] = [:]
+        for stroke in strokes where stroke.renderBounds.insetBy(dx: -24, dy: -24).intersects(visible) {
+            let key = ObjectIdentifier(stroke as PKStrokeReference)
+            if let existing = lights[key] { next[key] = existing; continue }
+            guard let first = stroke.path.first else { continue }
+            let path = CGMutablePath()
+            let ranges = stroke.mask == nil ? [CGFloat(0)...CGFloat(stroke.path.count - 1)] : stroke.maskedPathRanges
+            for range in ranges {
+                let start = stroke.path.interpolatedLocation(at: range.lowerBound).applying(stroke.transform)
+                path.move(to: start)
+                if range.lowerBound == range.upperBound {
+                    path.addLine(to: CGPoint(x: start.x + 0.01, y: start.y))
+                } else {
+                    for point in stroke.path.interpolatedPoints(in: range, by: .parametricStep(0.5)) {
+                        path.addLine(to: point.location.applying(stroke.transform))
+                    }
+                    path.addLine(to: stroke.path.interpolatedLocation(at: range.upperBound).applying(stroke.transform))
+                }
+            }
+            let light = LuminousStroke(color: stroke.ink.color, width: first.size.width * hypot(stroke.transform.a, stroke.transform.b))
+            light.setPath(path)
+            world.addSublayer(light.tube)
+            next[key] = light
+        }
+        for (key, light) in lights where next[key] == nil { light.tube.removeFromSuperlayer() }
+        lights = next
     }
+}
+
+// Observe PencilKit's own drawing gesture so navigation and Pencil input retain
+// their normal ownership. The tip and active halo are presentation layers only.
+final class CloudInkCanvas: PKCanvasView {
+    private var secondWriter: FingerInkGesture?
+    private var waitingStrokes: [(PKStroke,CAShapeLayer)] = []
+    func configureDuet(_ enabled: Bool,width:CGFloat) {
+        if enabled && secondWriter == nil {
+            let finger=FingerInkGesture(target:nil,action:nil)
+            finger.allowedTouchTypes=[NSNumber(value:UITouch.TouchType.direct.rawValue)]
+            finger.cancelsTouchesInView=false;finger.delaysTouchesBegan=false
+            finger.delegate=finger
+            addGestureRecognizer(finger);secondWriter=finger
+            drawingGestureRecognizer.addTarget(self,action:#selector(pencilStateChanged))
+        }
+        secondWriter?.width=width
+        secondWriter?.isEnabled=enabled
+        drawingPolicy=enabled ? .pencilOnly : .anyInput
+    }
+    func finishFinger(_ stroke:PKStroke,preview:CAShapeLayer) {
+        waitingStrokes.append((stroke,preview));commitFingerIfReady()
+    }
+    @objc private func pencilStateChanged(){
+        DispatchQueue.main.async { [weak self] in self?.commitFingerIfReady() }
+    }
+    private func commitFingerIfReady() {
+        guard !waitingStrokes.isEmpty,drawingGestureRecognizer.state != .began,drawingGestureRecognizer.state != .changed else{return}
+        let finished=waitingStrokes;waitingStrokes.removeAll()
+        drawing=PKDrawing(strokes:drawing.strokes+finished.map{$0.0})
+        finished.forEach{$0.1.removeFromSuperlayer()}
+    }
+    private let tip = CAGradientLayer()
+    private var liveLight: LuminousStroke?
+    private var liveWidth: CGFloat = 0
+    private let activePath = UIBezierPath()
+    private var tint: UIColor?
+
+    func configureCloud(_ color: UIColor?, width: CGFloat) {
+        if tip.superlayer == nil, color != nil {
+            tip.type = .radial
+            tip.startPoint = CGPoint(x: 0.5, y: 0.5)
+            tip.endPoint = CGPoint(x: 1, y: 0.5)
+            tip.locations = [0, 0.16, 0.45, 1]
+            tip.zPosition = 10
+            tip.actions = ["position": NSNull(), "hidden": NSNull(), "bounds": NSNull(), "colors": NSNull()]
+            tip.isHidden = true
+            layer.addSublayer(tip)
+            drawingGestureRecognizer.addTarget(self, action: #selector(trackInk(_:)))
+        }
+        guard let color else {
+            tint = nil
+            clearTip()
+            return
+        }
+        if tint != color || liveWidth != width {
+            liveWidth = width
+            liveLight?.tube.removeFromSuperlayer()
+            let light = LuminousStroke(color: color, width: width)
+            light.tube.zPosition = 9
+            layer.addSublayer(light.tube)
+            liveLight = light
+            tint = color
+            tip.colors = [color.withAlphaComponent(0.90).cgColor, color.withAlphaComponent(0.66).cgColor,
+                          color.withAlphaComponent(0.31).cgColor, color.withAlphaComponent(0).cgColor]
+        }
+        let diameter = max(12, min(32, width * 3 + 6))
+        tip.bounds = CGRect(x: 0, y: 0, width: diameter, height: diameter)
+    }
+
+    private func clearTip() {
+        tip.isHidden = true
+        liveLight?.tube.isHidden = true
+        activePath.removeAllPoints()
+    }
+
+    @objc private func trackInk(_ gesture: UIGestureRecognizer) {
+        guard tint != nil else { return }
+        if gesture.state == .began { liveLight?.setMotion() }
+        switch gesture.state {
+        case .began, .changed:
+            let point = gesture.location(in: self)
+            if gesture.state == .began || activePath.isEmpty {
+                activePath.removeAllPoints()
+                activePath.move(to: point)
+            } else {
+                activePath.addLine(to: point)
+            }
+            liveLight?.tube.isHidden = false
+            liveLight?.setPath(activePath.cgPath)
+            tip.position = point
+            tip.isHidden = false
+        case .ended:
+            // Leave a short bridge while PencilKit commits its final geometry.
+            tip.isHidden = true
+            let finished = liveLight
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+                guard let self, self.activePath.isEmpty else { return }
+                finished?.tube.isHidden = true
+            }
+            activePath.removeAllPoints()
+        default:
+            clearTip()
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { clearTip() }
+    }
+}
+
+private final class FingerInkGesture: UIGestureRecognizer, UIGestureRecognizerDelegate {
+    var width:CGFloat=3
+    private weak var contact: UITouch?
+    private var started:TimeInterval=0
+    private var points:[PKStrokePoint]=[]
+    private var line=UIBezierPath()
+    private var preview=CAShapeLayer()
+    private let color=UIColor(red:0.90,green:0.25,blue:0.23,alpha:1)
+    func gestureRecognizer(_ gestureRecognizer:UIGestureRecognizer,shouldRecognizeSimultaneouslyWith other:UIGestureRecognizer)->Bool {true}
+    override func touchesBegan(_ touches:Set<UITouch>,with event:UIEvent){
+        guard contact==nil,let touch=touches.first,let canvas=view as? CloudInkCanvas else{return}
+        contact=touch;started=touch.timestamp
+        line=UIBezierPath();preview=CAShapeLayer();preview.strokeColor=color.cgColor;preview.fillColor=nil
+        preview.lineWidth=width;preview.lineCap = .round;preview.lineJoin = .round;preview.zPosition=11
+        preview.actions=["path":NSNull()];canvas.layer.addSublayer(preview)
+        sample(touch);state = .began
+    }
+    private func sample(_ touch:UITouch){
+        let location=touch.preciseLocation(in:view)
+        guard points.last?.location != location else{return}
+        if points.isEmpty {line.move(to:location)} else {line.addLine(to:location)}
+        points.append(PKStrokePoint(location:location,timeOffset:touch.timestamp-started,size:CGSize(width:width,height:width),opacity:1,force:1,azimuth:0,altitude:.pi/2))
+        preview.path=line.cgPath
+    }
+    override func touchesMoved(_ touches:Set<UITouch>,with event:UIEvent){
+        guard let contact,touches.contains(contact) else{return}
+        for t in event.coalescedTouches(for:contact) ?? [contact] {sample(t)}
+        state = .changed
+    }
+    override func touchesEnded(_ touches:Set<UITouch>,with event:UIEvent){
+        guard let contact,touches.contains(contact),let canvas=view as? CloudInkCanvas else{return}
+        sample(contact)
+        let stroke=PKStroke(ink:PKInk(.pen,color:color),path:PKStrokePath(controlPoints:points,creationDate:Date()))
+        handedOff=true;canvas.finishFinger(stroke,preview:preview);state = .ended
+    }
+    override func touchesCancelled(_ touches:Set<UITouch>,with event:UIEvent){state = .cancelled}
+    override func reset(){super.reset();contact=nil;points.removeAll();if !handedOff {preview.removeFromSuperlayer()};handedOff=false}
+    private var handedOff=false
 }
